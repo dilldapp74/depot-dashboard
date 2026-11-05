@@ -283,6 +283,17 @@ def alert_loop():
         time.sleep(CHECK_EVERY)
 
 
+# Erlaubte statische Dateien (feste Liste – keine beliebigen Pfade, damit holdings.json & Co. nie ausgeliefert werden)
+STATIC = {
+    "/": ("index.html", "text/html; charset=utf-8"),
+    "/manifest.webmanifest": ("manifest.webmanifest", "application/manifest+json"),
+    "/sw.js": ("sw.js", "text/javascript; charset=utf-8"),
+    "/favicon.ico": ("icons/favicon-32.png", "image/png"),
+    **{f"/icons/{n}": (f"icons/{n}", "image/png") for n in (
+        "icon-192.png", "icon-512.png", "icon-maskable-512.png", "apple-touch-icon.png", "favicon-32.png")},
+}
+
+
 class Handler(BaseHTTPRequestHandler):
     def log_message(self, *a):
         pass
@@ -298,9 +309,12 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         path = urllib.parse.urlparse(self.path).path
-        if path in ("/", "/index.html"):
-            with open(os.path.join(BASE, "index.html"), "rb") as f:
-                return self.send(200, f.read(), "text/html; charset=utf-8")
+        if path == "/index.html":
+            path = "/"
+        if path in STATIC:
+            rel, ctype = STATIC[path]
+            with open(os.path.join(BASE, rel), "rb") as f:
+                return self.send(200, f.read(), ctype)
         if path == "/api/portfolio":
             return self.send(200, portfolio())
         if path == "/api/holdings":

@@ -25,7 +25,22 @@ cp holdings.example.json holdings.json   # nur beim ersten Mal
 python3 server.py
 ```
 
-Dann http://127.0.0.1:8765 öffnen.
+Dann http://localhost:8765 öffnen.
+
+## Als App installieren
+
+Das Dashboard ist eine **PWA** (Progressive Web App): eigenes Symbol, eigenes Fenster, startet auch
+ohne Verbindung mit dem zuletzt geladenen Stand.
+
+- **Mac (Chrome/Edge):** http://localhost:8765 öffnen → Installieren-Symbol rechts in der Adressleiste
+  (oder ⋮ → „Streamen, speichern und teilen“ → „Seite als App installieren“)
+- **Mac (Safari):** Ablage → „Zum Dock hinzufügen“
+- **Android (Chrome):** ⋮ → „App installieren“ bzw. „Zum Startbildschirm hinzufügen“
+
+**Android braucht HTTPS.** Solange der Server nur auf dem Mac unter `localhost` läuft, kann das Handy
+ihn nicht erreichen. Das kommt mit dem nächsten Schritt (Server im Dauerbetrieb + Tailscale mit HTTPS).
+
+Die Symbole werden mit `python3 scripts/make_icons.py` erzeugt (braucht Pillow).
 
 ## Positionen
 
@@ -58,7 +73,7 @@ Bricht ab, wenn `holdings.json`, `alerts.json`, `.env`-Dateien oder API-Schlüss
 
 ## Nächste Schritte
 
-1. PWA: auf Mac und Android als App installierbar, Handy-Layout
+1. ~~PWA: auf Mac und Android als App installierbar, Handy-Layout~~ ✓
 2. Server dauerhaft betreiben (Raspberry Pi / Cloud) + Zugriff per Tailscale, Web-Push statt Mac-Mitteilung
 3. Paper-Trading mit Spielgeld
 

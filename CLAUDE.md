@@ -20,6 +20,18 @@ und Alerts. Später: als App auf Mac und Android (PWA), Server im Dauerbetrieb, 
 - Code einfach und gut lesbar halten, Kommentare auf Deutsch.
 - Der Nutzer ist Hobby-Entwickler: wichtige Schritte kurz erklären.
 
+## PWA
+- `manifest.webmanifest`, `icons/` (aus `scripts/make_icons.py`), `sw.js`
+- `sw.js`: „Netz zuerst, sonst Cache“ für Seite, Symbole, Chart.js und `/api/portfolio` + `/api/alerts`
+  (Offline-Fallback mit Kopfzeile `X-Offline: 1` → Hinweisbalken). Andere API-Aufrufe nie aus dem Cache.
+  Bei größeren Änderungen `CACHE` in `sw.js` hochzählen.
+- `server.py` liefert nur Dateien aus der festen Liste `STATIC` aus – nie beliebige Pfade
+  (sonst wären `holdings.json`/`alerts.json` abrufbar).
+- Handy-Layout (≤ 640 px): Positionen als Karten (`data-label` an jeder Zelle), Sortierung per Auswahlliste,
+  Bearbeiten-Dialog als Vollbild. Eingabefelder 16 px, damit Android/iOS nicht hineinzoomen.
+- Die eingebaute Browser-Vorschau der Claude-App registriert keine Service Worker – zum Prüfen
+  echtes Chrome nehmen (`data-sw="aktiv"` am `<html>`).
+
 ## Aufbau server.py
 - `http_json()` – HTTP-Abruf mit Zwischenspeicher (TTL je Aufruf)
 - `resolve_symbol()` – ISIN → Yahoo-Symbol; nur Börsenplätze mit ≥ 20 Tageskursen, EUR bevorzugt
