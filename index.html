@@ -2,8 +2,17 @@
 <html lang="de">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Depot-Dashboard</title>
+<!-- PWA: installierbar auf Android (Chrome → „App installieren“) und macOS (Chrome/Edge → Installieren, Safari → „Zum Dock hinzufügen“) -->
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/favicon-32.png" type="image/png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<meta name="theme-color" content="#f6f7f9" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0f1115" media="(prefers-color-scheme: dark)">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Depot">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <style>
 :root{
@@ -33,6 +42,7 @@ button:hover{filter:brightness(.97)}
 .pos{color:var(--pos)}.neg{color:var(--neg)}
 .grid{display:grid;grid-template-columns:2fr 1fr;gap:12px;margin-bottom:16px}
 @media (max-width:860px){.grid{grid-template-columns:1fr}}
+.grid>*{min-width:0} /* lange Inhalte (z. B. Auswahllisten) dürfen die Spalte nicht aufdehnen */
 .card h2{font-size:14px;margin:0 0 12px;font-weight:600}
 .chartbox{position:relative;height:260px}
 .tabs{display:flex;gap:6px;margin-bottom:10px;flex-wrap:wrap}
@@ -44,6 +54,7 @@ th,td{padding:9px 8px;border-bottom:1px solid var(--line);text-align:right;white
 th{color:var(--muted);font-weight:500;font-size:12px;cursor:pointer;user-select:none}
 th:first-child,td:first-child,th.l,td.l{text-align:left}
 td .n{font-weight:500}td .s{color:var(--muted);font-size:12px}
+td.day .s,td.pl .s{display:block}
 .chip{display:inline-block;background:var(--chip);border-radius:999px;padding:1px 8px;font-size:12px}
 .err{color:var(--neg);font-size:12px}
 .empty{text-align:center;padding:40px;color:var(--muted)}
@@ -64,6 +75,58 @@ dialog .hint{color:var(--muted);font-size:12px;margin:8px 0 14px}
 .alog{max-height:300px;overflow:auto}
 .alog .e{padding:8px 0;border-bottom:1px solid var(--line)}
 .alog .e b{display:block}.alog .e .s{color:var(--muted);font-size:12px}
+.offline{display:none;background:var(--chip);border:1px solid var(--line);border-radius:10px;padding:8px 12px;margin-bottom:12px;font-size:13px}
+.offline.on{display:block}
+.only-m{display:none}
+.wrap{padding-left:max(16px,env(safe-area-inset-left));padding-right:max(16px,env(safe-area-inset-right));
+  padding-top:max(24px,env(safe-area-inset-top));padding-bottom:max(48px,env(safe-area-inset-bottom))}
+
+/* ---------- Handy-Layout ---------- */
+@media (max-width:640px){
+  .wrap{padding-top:max(14px,env(safe-area-inset-top))}
+  header{margin-bottom:14px}
+  h1{font-size:18px}
+  .only-m{display:inline}.only-d{display:none}
+  .kpis{grid-template-columns:1fr 1fr;gap:8px}
+  .kpi{padding:12px}
+  .kpi .val{font-size:19px}
+  .kpi .sub{font-size:12px}
+  #k-depots,.kpi.wide{grid-column:1 / -1}
+  .card{padding:14px}
+  .chartbox{height:220px}
+
+  /* Positionen als Karten statt Tabelle */
+  .msort{display:flex;gap:8px;align-items:center;margin-bottom:6px}
+  .msort select{font:inherit;padding:5px 8px;border:1px solid var(--line);border-radius:6px;background:var(--bg);color:var(--text)}
+  #tbl thead{display:none}
+  #tbl tr{display:grid;grid-template-columns:1fr 1fr;column-gap:12px;padding:10px 0;border-bottom:1px solid var(--line)}
+  #tbl td{display:flex;justify-content:space-between;gap:8px;border:none;padding:2px 0;white-space:normal;text-align:right}
+  #tbl td::before{content:attr(data-label);color:var(--muted);font-size:12px;text-align:left}
+  #tbl td.name{grid-column:1 / -1;display:block;text-align:left;margin-bottom:4px}
+  #tbl td.name::before{content:none}
+  #tbl td .s{display:inline}
+  #tbl td.day .s, #tbl td.pl .s{display:block}
+  #tbl td.empty{grid-column:1 / -1;display:block}
+  .tablewrap{overflow:visible}
+
+  /* Bearbeiten-Dialog als Vollbild mit gestapelten Feldern */
+  dialog{width:100vw;max-width:100vw;height:100dvh;max-height:100dvh;margin:0;border-radius:0;border:none;
+    padding:max(16px,env(safe-area-inset-top)) 16px max(16px,env(safe-area-inset-bottom))}
+  #etbl thead{display:none}
+  #etbl tr{display:grid;grid-template-columns:1fr 1fr;gap:6px;padding:10px 0;border-bottom:1px solid var(--line);position:relative}
+  #etbl td{display:block;padding:0;text-align:left}
+  #etbl td:nth-child(1),#etbl td:nth-child(2){grid-column:1 / -1}
+  #etbl td:nth-child(1){padding-right:40px}
+  #etbl td:last-child{position:absolute;top:10px;right:0}
+  #etbl input{width:100% !important;font-size:16px} /* 16px verhindert Auto-Zoom auf dem Handy */
+  #etbl td::before{content:attr(data-label);display:block;color:var(--muted);font-size:11px;margin-bottom:2px}
+  #etbl td:last-child{top:28px}
+  .row-actions{position:sticky;bottom:calc(-1 * max(16px,env(safe-area-inset-bottom)));background:var(--card);
+    padding:10px 0 max(10px,env(safe-area-inset-bottom));margin-bottom:calc(-1 * max(16px,env(safe-area-inset-bottom)));border-top:1px solid var(--line)}
+  .aform select,.aform input{font-size:16px;max-width:100%}
+  .aform select{flex:1 1 100%}
+}
+@media (min-width:641px){.msort{display:none}.kpi.wide{grid-column:auto}}
 </style>
 </head>
 <body>
@@ -75,14 +138,15 @@ dialog .hint{color:var(--muted);font-size:12px;margin:8px 0 14px}
     </div>
     <div style="display:flex;gap:8px">
       <button id="refresh">Aktualisieren</button>
-      <button class="primary" id="edit">Positionen bearbeiten</button>
+      <button class="primary" id="edit"><span class="only-d">Positionen bearbeiten</span><span class="only-m">Bearbeiten</span></button>
     </div>
   </header>
+  <div class="offline" id="offline">Keine Verbindung zum Server – angezeigt wird der letzte gespeicherte Stand.</div>
 
   <section class="kpis">
     <div class="card kpi"><div class="label">Gesamtwert</div><div class="val" id="k-total">–</div><div class="sub" id="k-count"></div></div>
     <div class="card kpi"><div class="label">Heute</div><div class="val" id="k-day">–</div><div class="sub" id="k-daypct"></div></div>
-    <div class="card kpi"><div class="label">Gewinn / Verlust</div><div class="val" id="k-pl">–</div><div class="sub" id="k-plpct"></div></div>
+    <div class="card kpi wide"><div class="label">Gewinn / Verlust</div><div class="val" id="k-pl">–</div><div class="sub" id="k-plpct"></div></div>
     <div class="card kpi" id="k-depots"><div class="label">Nach Depot</div><div class="sub" id="k-depotlist" style="margin-top:6px"></div></div>
   </section>
 
@@ -100,6 +164,7 @@ dialog .hint{color:var(--muted);font-size:12px;margin:8px 0 14px}
 
   <section class="card">
     <h2>Positionen</h2>
+    <label class="msort meta">Sortieren nach <select id="msort"></select></label>
     <div class="tablewrap"><table id="tbl"><thead></thead><tbody></tbody></table></div>
   </section>
 
@@ -165,9 +230,19 @@ function localSet(k,v){try{localStorage.setItem('dd.'+k,v)}catch(e){}}
 async function load(){
   document.getElementById('stamp').textContent = 'Lade Kurse …';
   try{
-    const r = await fetch('/api/portfolio'); data = await r.json(); render();
-  }catch(e){ document.getElementById('stamp').textContent = 'Fehler beim Laden: '+e.message; }
+    const r = await fetch('/api/portfolio');
+    const offline = r.headers.get('X-Offline') === '1';   // vom Service Worker: alter Stand
+    data = await r.json(); render();
+    document.getElementById('offline').classList.toggle('on', offline);
+    if(offline) document.getElementById('stamp').textContent = 'Letzter Stand: '+new Date(data.generated*1000).toLocaleString('de-DE');
+  }catch(e){ document.getElementById('stamp').textContent = 'Keine Verbindung zum Server'; document.getElementById('offline').classList.add('on'); }
 }
+
+// Service Worker anmelden (macht die App installierbar und offline startbar)
+// data-sw am <html> zeigt das Ergebnis (hilft bei der Fehlersuche)
+if('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js')
+  .then(()=>navigator.serviceWorker.ready).then(()=>document.documentElement.dataset.sw='aktiv')
+  .catch(e=>{document.documentElement.dataset.sw='fehler'; console.warn('Service Worker:', e);});
 
 function render(){
   const P = data.positions;
@@ -211,20 +286,25 @@ function renderTable(P,total){
   const t=document.getElementById('tbl');
   t.tHead.innerHTML='<tr>'+COLS.map(([k,l,c])=>`<th data-k="${k}" class="${c||''}">${l}${sortKey===k?(sortDir<0?' ↓':' ↑'):''}</th>`).join('')+'</tr>';
   t.tHead.querySelectorAll('th').forEach(th=>th.onclick=()=>{const k=th.dataset.k; if(sortKey===k) sortDir*=-1; else {sortKey=k; sortDir=-1;} localSet('sort',k); renderTable(P,total);});
+  // Handy: Sortierung per Auswahlliste (Tabellenkopf ist dort ausgeblendet)
+  const ms=document.getElementById('msort');
+  ms.innerHTML=COLS.map(([k,l])=>`<option value="${k}" ${k===sortKey?'selected':''}>${l}</option>`).join('');
+  ms.onchange=()=>{sortKey=ms.value; sortDir=(sortKey==='name'||sortKey==='depot')?1:-1; localSet('sort',sortKey); renderTable(P,total);};
   if(!P.length){ t.tBodies[0].innerHTML=`<tr><td colspan="8" class="empty">Noch keine Positionen. Klicke auf „Positionen bearbeiten“.</td></tr>`; return; }
   const rows = P.map(p=>({...p, weight: total? p.value/total*100 : 0}));
   rows.sort((a,b)=>{const x=a[sortKey]??-Infinity, y=b[sortKey]??-Infinity; return (typeof x==='string'? x.localeCompare(y) : x-y)*sortDir;});
   t.tBodies[0].innerHTML = rows.map(p=>{
-    if(p.error) return `<tr><td><div class="n">${esc(p.name||p.id)}</div><div class="err">${esc(p.error)}</div></td><td class="l">${esc(p.depot)}</td><td>${qty(p.anteile)}</td><td colspan="5"></td></tr>`;
+    // data-label = Beschriftung in der Handy-Ansicht (Karten statt Tabelle)
+    if(p.error) return `<tr><td class="name"><div class="n">${esc(p.name||p.id)}</div><div class="err">${esc(p.error)}</div></td><td class="l" data-label="Depot"><span>${esc(p.depot)}</span></td><td data-label="Anteile"><span>${qty(p.anteile)}</span></td><td colspan="5" class="only-d"></td></tr>`;
     return `<tr>
-      <td><div class="n">${esc(p.name||p.symbol)}</div><div class="s">${esc(p.id)}${p.symbol&&p.symbol!==p.id?' · '+esc(p.symbol):''}${p.currency_src&&p.currency_src!=='EUR'?' · '+esc(p.currency_src):''}</div></td>
-      <td class="l"><span class="chip">${esc(p.depot||'–')}</span></td>
-      <td>${qty(p.anteile)}</td>
-      <td>${priceFmt(p.price)}</td>
-      <td><b>${eur.format(p.value)}</b></td>
-      <td class="${cls(p.day_pct)}">${pct(p.day_pct)}<div class="s">${signed(p.day_abs)}</div></td>
-      <td>${num(p.weight,1)} %</td>
-      <td class="${p.pl_abs!=null?cls(p.pl_abs):''}">${p.pl_abs!=null? signed(p.pl_abs)+`<div class="s">${pct(p.pl_pct)}</div>`:'<span class="s">–</span>'}</td>
+      <td class="name"><div class="n">${esc(p.name||p.symbol)}</div><div class="s">${esc(p.id)}${p.symbol&&p.symbol!==p.id?' · '+esc(p.symbol):''}${p.currency_src&&p.currency_src!=='EUR'?' · '+esc(p.currency_src):''}</div></td>
+      <td class="l" data-label="Depot"><span class="chip">${esc(p.depot||'–')}</span></td>
+      <td data-label="Anteile"><span>${qty(p.anteile)}</span></td>
+      <td data-label="Kurs"><span>${priceFmt(p.price)}</span></td>
+      <td data-label="Wert"><b>${eur.format(p.value)}</b></td>
+      <td data-label="Heute" class="day ${cls(p.day_pct)}"><span>${pct(p.day_pct)}<span class="s">${signed(p.day_abs)}</span></span></td>
+      <td data-label="Anteil"><span>${num(p.weight,1)} %</span></td>
+      <td data-label="G/V" class="pl ${p.pl_abs!=null?cls(p.pl_abs):''}"><span>${p.pl_abs!=null? signed(p.pl_abs)+`<span class="s">${pct(p.pl_pct)}</span>`:'<span class="s">–</span>'}</span></td>
     </tr>`;}).join('');
 }
 
@@ -262,7 +342,7 @@ function renderLine(ok){
       datasets:[{data:series.map(s=>s[1]),borderColor:color,backgroundColor:color+'22',fill:true,pointRadius:0,borderWidth:2,tension:.15}]},
     options:{maintainAspectRatio:false,interaction:{mode:'index',intersect:false},
       plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>eur.format(c.raw)}}},
-      scales:{x:{ticks:{color:css('--muted'),maxTicksLimit:7},grid:{display:false}},
+      scales:{x:{ticks:{color:css('--muted'),maxTicksLimit:innerWidth<=640?4:7,maxRotation:0},grid:{display:false}},
               y:{ticks:{color:css('--muted'),callback:v=>eur.format(v).replace(/,\d\d/,'')},grid:{color:css('--line')}}}}};
   if(series.length>1){
     const ch=series.at(-1)[1]-series[0][1];
@@ -276,11 +356,11 @@ const dlg=document.getElementById('dlg'); let original=[];
 function erow(h={}){
   const tr=document.createElement('tr');
   tr.dataset.symbol=h.symbol||''; tr.dataset.origId=h.id||'';
-  tr.innerHTML=`<td><input data-f="name" value="${esc(h.name)}" placeholder="z. B. Vanguard All-World"></td>
-    <td><input data-f="id" value="${esc(h.id)}" placeholder="ISIN oder Ticker"></td>
-    <td><input data-f="depot" value="${esc(h.depot)}" placeholder="Trade Republic / ING"></td>
-    <td><input data-f="anteile" value="${h.anteile??''}" inputmode="decimal" style="width:90px"></td>
-    <td><input data-f="einstand" value="${h.einstand??''}" inputmode="decimal" style="width:110px"></td>
+  tr.innerHTML=`<td data-label="Name"><input data-f="name" value="${esc(h.name)}" placeholder="z. B. Vanguard All-World"></td>
+    <td data-label="ISIN / Ticker"><input data-f="id" value="${esc(h.id)}" placeholder="ISIN oder Ticker"></td>
+    <td data-label="Depot"><input data-f="depot" value="${esc(h.depot)}" placeholder="Trade Republic / ING"></td>
+    <td data-label="Anteile"><input data-f="anteile" value="${h.anteile??''}" inputmode="decimal" placeholder="Anteile" style="width:90px"></td>
+    <td data-label="Einstand € gesamt"><input data-f="einstand" value="${h.einstand??''}" inputmode="decimal" placeholder="Einstand € gesamt" style="width:110px"></td>
     <td><button title="Entfernen">✕</button></td>`;
   tr.querySelector('button').onclick=()=>tr.remove();
   return tr;
