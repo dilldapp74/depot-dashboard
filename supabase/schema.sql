@@ -128,9 +128,28 @@ drop trigger if exists standard_alerts on auth.users;
 create trigger standard_alerts after insert on auth.users
   for each row execute function public.standard_alerts();
 
+-- ---------- Cron-Geheimnis (Vault) ----------
+-- Die Datenbank erzeugt das Geheimnis selbst und bewahrt es verschlüsselt im Vault auf.
+-- Der Cron-Job schickt es mit, die Edge Function prüft es über cron_geheimnis_ok() – niemand muss es abtippen.
+
+do $$
+begin
+  if not exists (select 1 from vault.secrets where name = 'depot_cron_secret') then
+    perform vault.create_secret(replace(gen_random_uuid()::text || gen_random_uuid()::text, '-', ''),
+      'depot_cron_secret', 'Cron-Aufruf der Edge Function depot');
+  end if;
+end $$;
+
+create or replace function public.cron_geheimnis_ok(p text) returns boolean
+language sql stable security definer set search_path = '' as $$
+  select exists (select 1 from vault.decrypted_secrets where name = 'depot_cron_secret' and decrypted_secret = p);
+$$;
+revoke execute on function public.cron_geheimnis_ok(text) from public, anon, authenticated;
+grant execute on function public.cron_geheimnis_ok(text) to service_role;
+
 -- ---------- Alerts regelmäßig prüfen (Cron) ----------
--- Erst ausführen, wenn die Edge Function "depot" deployt und das Geheimnis CRON_SECRET gesetzt ist.
--- PROJEKT-ID und <CRON_SECRET> (aus .secrets/supabase-geheimnisse.txt) ersetzen, dann diesen Block einzeln im SQL Editor ausführen.
+-- Erst ausführen, wenn die Edge Function "depot" deployt ist.
+-- PROJEKT-ID ersetzen (der Teil vor .supabase.co), dann diesen Block einzeln im SQL Editor ausführen.
 -- Prüft alle 5 Minuten (Krypto rund um die Uhr; Aktien ändern sich außerhalb der Handelszeit nicht).
 --
 -- create extension if not exists pg_cron with schema pg_catalog;
@@ -140,7 +159,8 @@ create trigger standard_alerts after insert on auth.users
 --   select net.http_post(
 --     url := 'https://PROJEKT-ID.supabase.co/functions/v1/depot',
 --     body := '{"aktion": "cron"}'::jsonb,
---     headers := '{"Content-Type": "application/json", "x-cron-secret": "<CRON_SECRET>"}'::jsonb,
+--     headers := jsonb_build_object('Content-Type', 'application/json', 'x-cron-secret',
+--       (select decrypted_secret from vault.decrypted_secrets where name = 'depot_cron_secret')),
 --     timeout_milliseconds := 30000
 --   )
 -- $job$);

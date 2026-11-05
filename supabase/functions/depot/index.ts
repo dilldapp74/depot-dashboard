@@ -5,20 +5,21 @@
 //   { aktion: "pruefen" }    aus der App → Alerts sofort prüfen, gibt ausgelöste zurück
 //   { aktion: "test" }       aus der App → Test-Mitteilung an alle eigenen Geräte
 //   { aktion: "cron" }       per Cron (Kopfzeile x-cron-secret) → Alerts aller Konten prüfen
+//   { aktion: "status" }     Diagnose (Kopfzeile x-cron-secret) → Yahoo erreichbar? Push-Schlüssel gesetzt?
 //
 // Einstellungen im Dashboard: "Verify JWT" AUS (die Funktion prüft Token bzw. Cron-Geheimnis selbst).
-// Geheimnisse (Edge Functions → Secrets): VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY, CRON_SECRET, APP_URL.
-// SUPABASE_URL und SUPABASE_SERVICE_ROLE_KEY stellt Supabase automatisch bereit.
+// Geheimnis (Edge Functions → Secrets): nur VAPID_PRIVATE_KEY. Das Cron-Geheimnis liegt im Vault der
+// Datenbank (siehe schema.sql). SUPABASE_URL und SUPABASE_SERVICE_ROLE_KEY stellt Supabase bereit.
 //
 // Die Kurs- und Alert-Logik entspricht server.py (lokale Fassung).
 
 import webpush from "npm:web-push@3.6.7";
 import { createClient } from "npm:@supabase/supabase-js@2.110.0";
 
-const VAPID_PUBLIC_KEY = Deno.env.get("VAPID_PUBLIC_KEY") ?? "";
+// Öffentlicher Schlüssel – derselbe wie VAPID_PUBLIC_KEY in config.js
+const VAPID_PUBLIC_KEY = "BIorsFql5jstcpgUYT3yr1LN1ZSRReqSbxVmLfw3D_j7dHdziYNhwwLuUSRVVlJNo1ul3IElxPcoDbCpXqAFHpI";
 const VAPID_PRIVATE_KEY = Deno.env.get("VAPID_PRIVATE_KEY") ?? "";
-const CRON_SECRET = Deno.env.get("CRON_SECRET") ?? "";
-const APP_URL = Deno.env.get("APP_URL") ?? "https://dilldapp74.github.io/depot-dashboard/";
+const APP_URL = "https://dilldapp74.github.io/depot-dashboard/";
 if (VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY) webpush.setVapidDetails(APP_URL, VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY);
 
 // Mit dem Service-Schlüssel: liest alle Daten, deshalb prüft die Funktion jede Anfrage selbst
@@ -243,12 +244,12 @@ async function angemeldet(req: Request): Promise<string | null> {
   return user?.id ?? null;
 }
 
-// Vergleich in konstanter Zeit, damit das Geheimnis nicht über Antwortzeiten erraten werden kann
-function gleich(a: string, b: string) {
-  if (!a || a.length !== b.length) return false;
-  let x = 0;
-  for (let i = 0; i < a.length; i++) x |= a.charCodeAt(i) ^ b.charCodeAt(i);
-  return x === 0;
+// Cron-Geheimnis gegen den Vault der Datenbank prüfen
+async function cronErlaubt(req: Request): Promise<boolean> {
+  const p = req.headers.get("x-cron-secret") ?? "";
+  if (p.length < 32) return false;
+  const { data, error } = await admin.rpc("cron_geheimnis_ok", { p });
+  return !error && data === true;
 }
 
 Deno.serve(async (req) => {
@@ -258,8 +259,15 @@ Deno.serve(async (req) => {
   try { body = await req.json(); } catch { return json({ error: "ungültige Anfrage" }, 400); }
 
   try {
+    // Diagnose: Erreicht die Funktion Yahoo? (nur mit Cron-Geheimnis)
+    if (body.aktion === "status") {
+      if (!(await cronErlaubt(req))) return json({ error: "nicht erlaubt" }, 401);
+      const probe = await bewerten({ uid: "", name: "", id: "SAP.DE", depot: "", anteile: 1, einstand: null, symbol: null }, true);
+      return json({ ok: !probe.error, yahoo: probe.error ?? "erreichbar", kurs: probe.price, verlauf: probe.history.length,
+        push: Boolean(VAPID_PRIVATE_KEY) });
+    }
     if (body.aktion === "cron") {
-      if (!gleich(req.headers.get("x-cron-secret") ?? "", CRON_SECRET)) return json({ error: "nicht erlaubt" }, 401);
+      if (!(await cronErlaubt(req))) return json({ error: "nicht erlaubt" }, 401);
       const { data } = await admin.from("alert_regeln").select("user_id").eq("aktiv", true);
       const konten = [...new Set((data ?? []).map((r) => r.user_id))];
       let anzahl = 0;

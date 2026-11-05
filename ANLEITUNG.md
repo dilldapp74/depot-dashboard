@@ -2,64 +2,56 @@
 
 Danach läuft das Dashboard auf Mac und Android als App, die Alerts werden rund um die Uhr
 alle 5 Minuten geprüft und kommen als Push-Mitteilung – ohne dass der Mac an sein muss.
-Dauer: etwa 30 Minuten. Alles im kostenlosen Tarif.
+Alles im kostenlosen Tarif.
 
-Die geheimen Werte für Schritt 4 stehen in `.secrets/supabase-geheimnisse.txt`
-(nur auf deinem Mac, nicht im Repo).
+**Projekt:** `depot` (ID `ulxfxsirinucxxprlwjd`, Region Frankfurt) im Konto von dilldapp74.
 
-## 1. Neues Supabase-Projekt
-1. Auf https://supabase.com/dashboard anmelden → **New project**.
-   Name `depot`, Region **Frankfurt (eu-central-1)**, Datenbank-Passwort sicher notieren.
-2. Warten, bis das Projekt bereit ist (1–2 Minuten).
+## Erledigt (per Supabase-Connector bzw. Browser)
+- [x] Projekt `depot` in Frankfurt angelegt
+- [x] Datenbank: `supabase/schema.sql` (Tabellen, Zugriffsregeln, Standard-Alerts, Cron-Geheimnis im Vault)
+- [x] Edge Function `depot` deployt, „Verify JWT“ aus (prüft selbst)
+- [x] Cron `depot-alerts` alle 5 Minuten (liest das Geheimnis aus dem Vault)
+- [x] Registrierung neuer Konten abgeschaltet
+- [x] Site URL: `https://dilldapp74.github.io/depot-dashboard/`
+- [x] `config.js` mit Project URL und Publishable Key
 
-## 2. Datenbank einrichten
-1. **SQL Editor** → **New query** → den kompletten Inhalt von `supabase/schema.sql` einfügen → **Run**.
-   Der Cron-Block ganz unten ist auskommentiert und kommt erst in Schritt 6.
-2. **Authentication → Users → Add user → Create new user**: E-Mail und Passwort für dich,
-   **Auto Confirm User** anhaken. (Die zwei Standard-Alerts werden dabei automatisch angelegt.)
-3. **Authentication → Sign In / Providers**: **Allow new users to sign up** ausschalten.
-   So kann sich niemand sonst ein Konto anlegen.
+## Nur du (Passwörter und geheime Schlüssel gibt Claude nicht ein)
+1. **Konto anlegen:** Authentication → Users → **Add user → Create new user**: deine E-Mail,
+   ein Passwort, **Auto Confirm User** anhaken. Die zwei Standard-Alerts entstehen dabei automatisch.
+2. **Push-Schlüssel hinterlegen:** Edge Functions → **Secrets** → Add new secret:
+   Name `VAPID_PRIVATE_KEY`, Wert aus `.secrets/supabase-geheimnisse.txt` (nur auf deinem Mac).
 
-## 3. Edge Function `depot`
-1. **Edge Functions → Deploy a new function → Via Editor**.
-2. Name: `depot`. Den Inhalt von `supabase/functions/depot/index.ts` einfügen → **Deploy function**.
-3. In den Einstellungen der Funktion (**Details**) **Verify JWT with legacy secret** bzw. **Enforce JWT** ausschalten
-   – die Funktion prüft Anmeldung und Cron-Geheimnis selbst.
+## Danach (macht Claude)
+- Positionen aus der lokalen `holdings.json` in die Datenbank übertragen
+- Repo öffentlich schalten und GitHub Pages aktivieren
 
-## 4. Geheimnisse hinterlegen
-**Edge Functions → Secrets** → je Zeile aus `.secrets/supabase-geheimnisse.txt` ein Eintrag
-(Name links vom `=`, Wert rechts davon):
-`VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `CRON_SECRET`, `APP_URL`.
-
-## 5. Öffentliche Zugangsdaten an Claude geben
-**Connect** (oben) bzw. **Project Settings → API Keys**:
-- **Project URL** (z. B. `https://abcdefgh.supabase.co`)
-- **Publishable key** (`sb_publishable_…`) bzw. **anon public**
-
-Beide sind öffentlich und kommen in `config.js`. ⚠️ Niemals den **secret**/**service_role**-Schlüssel weitergeben.
-
-## 6. Cron für die Alerts
-Im **SQL Editor** den Cron-Block am Ende von `supabase/schema.sql` einfügen, die Kommentarzeichen `-- `
-entfernen, `PROJEKT-ID` (der Teil vor `.supabase.co`) und `<CRON_SECRET>` ersetzen → **Run**.
-Kontrolle: **Integrations → Cron → Jobs** zeigt `depot-alerts`, unter **History** alle 5 Minuten ein Lauf.
-
-## 7. Online stellen (macht Claude)
-Repo öffentlich schalten und GitHub Pages aktivieren. Danach in Supabase unter
-**Authentication → URL Configuration → Site URL** eintragen: `https://dilldapp74.github.io/depot-dashboard/`
-
-## 8. Positionen übernehmen
-Einmalig: In der Online-App anmelden → **Positionen bearbeiten** und die Positionen eintragen.
-(Oder Claude überträgt sie aus der lokalen `holdings.json` per SQL, das du im SQL Editor ausführst.)
-
-## 9. Auf den Geräten
+## Auf den Geräten
 - **Android (Chrome):** `https://dilldapp74.github.io/depot-dashboard/` öffnen → ⋮ → **App installieren**,
   anmelden, unter Alerts **Push aktivieren**.
 - **Mac:** dieselbe Adresse in Chrome → Installieren-Symbol in der Adressleiste (oder Safari → Ablage →
   **Zum Dock hinzufügen**), anmelden, **Push aktivieren**.
 
+## Prüfen und Fehlersuche
+- **Cron-Läufe:** Integrations → Cron → Jobs → `depot-alerts` → History
+- **Diagnose:** im SQL Editor
+  ```sql
+  select net.http_post(url := 'https://ulxfxsirinucxxprlwjd.supabase.co/functions/v1/depot',
+    body := '{"aktion": "status"}'::jsonb,
+    headers := jsonb_build_object('Content-Type', 'application/json', 'x-cron-secret',
+      (select decrypted_secret from vault.decrypted_secrets where name = 'depot_cron_secret')));
+  -- ein paar Sekunden später:
+  select status_code, content from net._http_response order by id desc limit 1;
+  ```
+  Antwort `yahoo: "erreichbar"` = Kurse kommen an, `push: true` = Push-Schlüssel ist gesetzt.
+
+## Neu aufsetzen (anderes Projekt)
+1. Neues Projekt, dann `supabase/schema.sql` im SQL Editor ausführen.
+2. `supabase/functions/depot/index.ts` als Edge Function `depot` deployen, „Verify JWT“ aus.
+3. Cron-Block am Ende von `schema.sql` mit der neuen Projekt-ID ausführen.
+4. Registrierung abschalten, Site URL setzen, `config.js` anpassen, Schritte „Nur du“.
+
 ## Gut zu wissen
 - Kostenlose Supabase-Projekte werden nach etwa einer Woche ohne Nutzung pausiert. Im Dashboard
   lassen sie sich mit einem Klick wieder starten.
 - **Abmelden** in der App schaltet Push auf diesem Gerät ab und löscht den gespeicherten Stand dort.
-- Die lokale Fassung (`python3 server.py`) läuft weiter, solange `SUPABASE_URL` in `config.js` leer ist –
-  zum Ausprobieren lokal die Zeile vorübergehend leeren.
+- Lokale Fassung (`python3 server.py`, nur dieser Mac): in `config.js` `SUPABASE_URL` leeren.
