@@ -495,9 +495,24 @@ async function load(){
 
 // Service Worker anmelden (macht die App installierbar und offline startbar)
 // data-sw am <html> zeigt das Ergebnis (hilft bei der Fehlersuche)
-if('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js')
-  .then(()=>navigator.serviceWorker.ready).then(()=>document.documentElement.dataset.sw='aktiv')
-  .catch(e=>{document.documentElement.dataset.sw='fehler'; console.warn('Service Worker:', e);});
+if('serviceWorker' in navigator){
+  // Neue Version: Die installierte App hat keinen Neu-laden-Knopf. Deshalb beim Zurückkehren in die App
+  // nach Updates suchen und, sobald ein neuer Service Worker übernimmt, die Seite einmal neu laden.
+  const hatteSteuerung = !!navigator.serviceWorker.controller;
+  let neuGeladen = false;
+  navigator.serviceWorker.addEventListener('controllerchange', ()=>{
+    if(!hatteSteuerung || neuGeladen) return;   // erste Installation: kein Neuladen nötig
+    neuGeladen = true; location.reload();
+  });
+  navigator.serviceWorker.register('sw.js')
+    .then(reg=>{
+      document.addEventListener('visibilitychange', ()=>{ if(document.visibilityState==='visible') reg.update().catch(()=>{}); });
+      setInterval(()=>reg.update().catch(()=>{}), 60*60*1000);   // zusätzlich stündlich
+      return navigator.serviceWorker.ready;
+    })
+    .then(()=>document.documentElement.dataset.sw='aktiv')
+    .catch(e=>{document.documentElement.dataset.sw='fehler'; console.warn('Service Worker:', e);});
+}
 
 function render(){
   const P = data.positions;

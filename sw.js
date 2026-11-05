@@ -2,7 +2,7 @@
 // Strategie (wie im Kanban-Board): immer zuerst aus dem Netz laden, damit Updates und
 // aktuelle Kurse sofort ankommen; ohne Verbindung die zuletzt gespeicherte Fassung zeigen.
 
-const CACHE = 'depot-v7';
+const CACHE = 'depot-v8';
 
 const DATEIEN = [
   './',
@@ -46,8 +46,10 @@ self.addEventListener('fetch', ereignis => {
   // Andere API-Aufrufe (z. B. Bearbeiten-Dialog) nie aus dem Cache bedienen
   if (!(cdn || (eigene && (!url.pathname.includes('/api/') || istDaten)))) return;
 
+  // Eigene Dateien immer beim Server nachfragen (cache: 'no-cache'): GitHub Pages erlaubt dem Browser sonst,
+  // bis zu 10 Minuten eine alte Fassung zu verwenden. Unverändertes kommt per ETag als kurze 304-Antwort zurück.
   ereignis.respondWith(
-    fetch(anfrage)
+    fetch(anfrage, eigene ? { cache: 'no-cache' } : undefined)
       .then(antwort => {
         if (antwort.ok) {
           const kopie = antwort.clone();
