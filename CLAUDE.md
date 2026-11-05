@@ -43,6 +43,9 @@ und Alerts. Später: als App auf Mac und Android (PWA), Server im Dauerbetrieb, 
 
 ## PWA
 - `manifest.webmanifest`, `icons/` (aus `scripts/make_icons.py`), `sw.js`
+- **`"id": "/depot-dashboard/"` nicht ändern.** Chrome löst `id` relativ zur Domain auf, nicht zum Manifest:
+  `"./"` wäre `https://dilldapp74.github.io/` – dieselbe Kennung wie das Family Kanban (gleiche Pages-Domain),
+  Android meldet dann „bereits installiert“. Eine geänderte id macht installierte Apps zu Waisen.
 - `sw.js`: „Netz zuerst, sonst Cache“ für Seite, Symbole, Chart.js und `/api/portfolio` + `/api/alerts`
   (Offline-Fallback mit Kopfzeile `X-Offline: 1` → Hinweisbalken). Andere API-Aufrufe nie aus dem Cache.
   Bei größeren Änderungen `CACHE` in `sw.js` hochzählen.

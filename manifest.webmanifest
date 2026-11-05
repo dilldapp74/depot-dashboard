@@ -3,7 +3,7 @@
   "short_name": "Depot",
   "description": "Alle Depots im Blick – Live-Kurse, Gewinn/Verlust und Alerts",
   "lang": "de",
-  "id": "./",
+  "id": "/depot-dashboard/",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
