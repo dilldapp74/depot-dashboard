@@ -117,6 +117,7 @@ create or replace function public.de_zahl(x numeric, stellen int) returns text
 language sql immutable set search_path = '' as $$
   select translate(to_char(round(x, stellen), 'FM999G999G999G990D' || repeat('0', stellen)), ',.', '.,');
 $$;
+revoke execute on function public.de_zahl(numeric, int) from public, anon, authenticated;
 
 -- ---------- Buchung (nur für die Edge Function) ----------
 -- Prüft Bargeld bzw. Bestand, bucht Order und Bargeld in einem Schritt (Zeile gesperrt, keine halben Buchungen).

@@ -41,6 +41,26 @@ und Alerts. Später: als App auf Mac und Android (PWA), Server im Dauerbetrieb, 
 - Testen ohne Deno: Funktion mit Node und nachgebauter Datenbank ausführen (Imports durch Stubs ersetzen).
 - Yahoo-Suche findet nicht jede ISIN (z. B. DE0007030033) – dann Ticker eintragen (`RHM.DE`).
 
+## Spieldepot (supabase/spieldepot.sql, spiel.js)
+- Tabellen `spieldepots`, `sim_orders`, `sim_regeln`, `sim_tageswerte`; Nutzer lesen Orders/Tageswerte nur.
+  `bargeld` setzt ein Trigger beim Anlegen = Startkapital; ändern darf es nur `sim_buchen()` (service_role).
+- Orders: Edge Function `sim_order` holt den Kurs selbst und bucht über `sim_buchen()` (Zeile gesperrt,
+  prüft Spielgeld/Bestand, Meldungen im deutschen Zahlenformat über `de_zahl()`).
+- `regelEntscheiden()` ist die **eine** Entscheidungslogik für den täglichen Lauf (Cron, werktags ab 17:40,
+  danach Tageswert) und den Backtest (`sim_backtest`, Tagesschlusskurse, 1 Jahr, Vergleich „am Start kaufen“).
+- Bestand und Einstand werden aus den Orders berechnet (Durchschnittskosten inkl. Gebühren).
+- Eingabefehler als `Hinweis` → HTTP 400, sonst 500.
+
+## Recherche (supabase/recherche.sql)
+- Tagesbewegungs-Alert → Auftrag in `recherchen` (einmal je Position und Tag). Der Cron arbeitet höchstens
+  einen Auftrag je Lauf ab, im Hintergrund über `EdgeRuntime.waitUntil` (pg_net wartet nur 30 s).
+- Claude: `claude-opus-5-5`, `web_search_20260209` (max. 3 Suchen), Ergebnis über das Werkzeug
+  `ergebnis_melden` (strict), `fallbacks: "default"` mit Beta `server-side-fallback-2026-07-01`,
+  `pause_turn` wird fortgesetzt. SDK `npm:@anthropic-ai/sdk@1.5.0`.
+- Grenzen: 5 je Tag, 5 € je Monat (Preise in `PREISE`, Kurs `USD_PRO_EUR` von Hand pflegen).
+- Ohne `ANTHROPIC_API_KEY`: Status `demo`. Anzeige im Kursverlauf-Dialog; Links nur `http(s)`.
+- Knopf „In Claude nachfragen“ öffnet `https://claude.ai/new?q=…` und kopiert die Frage (Abo, keine API-Kosten).
+
 ## PWA
 - `manifest.webmanifest`, `icons/` (aus `scripts/make_icons.py`), `sw.js`
 - **`"id": "/depot-dashboard/"` nicht ändern.** Chrome löst `id` relativ zur Domain auf, nicht zum Manifest:

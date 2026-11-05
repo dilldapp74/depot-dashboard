@@ -149,6 +149,12 @@ tr.klick:hover td{background:var(--chip)}
 .kstats>div{background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:8px 10px}
 .kstats .l{color:var(--muted);font-size:12px}
 .kstats .v{font-weight:600;font-variant-numeric:tabular-nums}
+.krech{margin-top:14px;border-top:1px solid var(--line);padding-top:12px}
+.krech-kopf{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:6px}
+.krech h3{margin:0;font-size:14px}
+.krech ul{margin:6px 0;padding-left:18px}
+.krech .quellen a{color:var(--accent);font-size:12px;margin-right:10px;word-break:break-word}
+.krech .kurz{color:var(--text);font-weight:500}
 @media (max-width:640px){
   #kdlg{width:100vw}
   #kdlg .chartbox{height:240px}
@@ -406,6 +412,13 @@ body.supabase .nur-lokal{display:none !important}
   <div class="tabs" id="k-ranges"></div>
   <div class="chartbox"><canvas id="k-chart"></canvas></div>
   <div class="kstats" id="k-stats"></div>
+  <div class="krech">
+    <div class="krech-kopf">
+      <h3>Nachrichten</h3>
+      <button id="k-claude" title="Öffnet claude.ai mit einer fertigen Frage (nutzt dein Claude-Abo, keine API-Kosten)">In Claude nachfragen ↗</button>
+    </div>
+    <div id="k-rech" class="meta">Automatische Recherchen erscheinen hier, wenn ein Tagesbewegungs-Alert auslöst.</div>
+  </div>
   <div class="meta" style="margin-top:10px">Tagesschlusskurse in EUR. Gestrichelt: dein Einstandskurs (Einstand ÷ Anteile), wenn er im angezeigten Bereich liegt.</div>
 </dialog>
 
@@ -583,7 +596,7 @@ function zeigeVerlauf(i){ kIndex=i; renderVerlauf(); if(!kdlg.open) kdlg.showMod
 document.getElementById('k-zu').onclick=()=>kdlg.close();
 kdlg.addEventListener('click',e=>{ if(e.target===kdlg) kdlg.close(); });   // Klick neben den Dialog schließt
 // Das close-Ereignis kommt verzögert – nur aufräumen, wenn der Dialog inzwischen nicht wieder geöffnet wurde
-kdlg.addEventListener('close',()=>{ if(kdlg.open) return; kIndex=null; if(kChart){kChart.destroy(); kChart=null;} });
+kdlg.addEventListener('close',()=>{ if(kdlg.open) return; kIndex=null; rechFuer=null; if(kChart){kChart.destroy(); kChart=null;} });
 
 function renderVerlauf(){
   const p=data?.positions?.[kIndex];
@@ -633,7 +646,39 @@ function renderVerlauf(){
   }
   if(!werte.length) st.unshift(box('Kursverlauf','keine Daten'));
   document.getElementById('k-stats').innerHTML=st.join('');
+  rechercheZeigen(p);
 }
+
+// ---- Recherche: automatische Ergebnisse (online) und Frage an claude.ai (immer) ----
+let rechFuer=null;
+async function rechercheZeigen(p){
+  const ziel=document.getElementById('k-rech');
+  if(API.modus!=='supabase'){ ziel.textContent='Automatische Recherchen gibt es in der Online-Fassung.'; return; }
+  if(rechFuer===p.id) return;            // bei minütlicher Aktualisierung nicht neu laden
+  rechFuer=p.id;
+  const { data, error } = await sb.from('recherchen').select('zeit, status, modell, inhalt, kosten_usd, anlass')
+    .eq('kennung', p.id).order('zeit',{ascending:false}).limit(1);
+  if(kIndex===null || data===null && error){ return; }
+  const r=data?.[0];
+  if(!r){ ziel.innerHTML='Noch keine automatische Recherche. Sie startet, wenn ein Tagesbewegungs-Alert für diese Position auslöst.'; return; }
+  const wann=new Date(r.zeit).toLocaleString('de-DE',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'});
+  const i=r.inhalt||{};
+  if(r.status==='offen'){ ziel.innerHTML=`<i>Recherche läuft …</i> (${esc(r.anlass)}, ${wann})`; return; }
+  if(r.status==='fehler'||r.status==='uebersprungen'){ ziel.innerHTML=`Recherche vom ${wann} nicht möglich: ${esc(i.fehler||r.status)}`; return; }
+  const sichere=(u)=>/^https?:\/\//i.test(u)?u:'#';
+  ziel.innerHTML=`<div class="kurz">${esc(i.kurzfassung)}</div>
+    ${i.gruende?.length?`<ul>${i.gruende.map(g=>`<li>${esc(g)}</li>`).join('')}</ul>`:''}
+    ${i.quellen?.length?`<div class="quellen">${i.quellen.map(q=>`<a href="${esc(sichere(q.url))}" target="_blank" rel="noopener noreferrer">${esc(q.titel||q.url)}</a>`).join('')}</div>`:''}
+    <div class="meta" style="margin-top:6px">${r.status==='demo'?'Demo-Modus – '+esc(i.demo_hinweis||''):
+      `${esc(r.anlass)} · ${wann} · ${i.sicherheit==='unklar'?'Grund unklar · ':''}Kosten ${num(Number(r.kosten_usd)/1.10,2)} € · automatisch erstellt, keine Anlageempfehlung`}</div>`;
+}
+document.getElementById('k-claude').onclick=async()=>{
+  const p=data?.positions?.[kIndex]; if(!p) return;
+  const frage=`Warum hat sich ${p.name||p.id} (${p.symbol||p.id}${p.id!==p.symbol?', '+p.id:''}) heute um ${pct(p.day_pct)} bewegt? `+
+    `Suche aktuelle Nachrichten der letzten Tage und fasse sie kurz auf Deutsch zusammen: mögliche Gründe, mit Quellen. Keine Kaufempfehlung.`;
+  try{ await navigator.clipboard.writeText(frage); }catch(e){}
+  window.open('https://claude.ai/new?q='+encodeURIComponent(frage),'_blank','noopener');
+};
 
 // ---- Bearbeiten ----
 const dlg=document.getElementById('dlg'); let original=[];

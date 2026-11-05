@@ -36,7 +36,8 @@ if [ -n "$env_files" ]; then
 fi
 
 # Typische API-Schlüssel (Anthropic, GitHub, allgemeine "secret"/"api_key"-Zuweisungen)
-key_pattern='(sk-ant-[A-Za-z0-9_-]{8,}|gh[pousr]_[A-Za-z0-9]{20,}|(api[_-]?key|secret)["'"'"' ]*[:=]["'"'"' ]*[A-Za-z0-9/+_-]{16,})'
+# Zuweisungen zählen nur mit einem Wert in Anführungszeichen (apiKey: "…"), nicht mit Variablennamen (apiKey: ANTHROPIC_API_KEY)
+key_pattern='(sk-ant-[A-Za-z0-9_-]{8,}|gh[pousr]_[A-Za-z0-9]{20,}|(api[_-]?key|secret)["'"'"' ]*[:=] *["'"'"'][A-Za-z0-9/+_-]{16,}["'"'"'])'
 if git grep --cached -n -I -i -E "$key_pattern" -- . ':!scripts/check_secrets.sh'; then
     echo "FEHLER: Möglicher Schlüssel gefunden (siehe oben)."
     failed=1
