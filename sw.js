@@ -2,7 +2,7 @@
 // Strategie (wie im Kanban-Board): immer zuerst aus dem Netz laden, damit Updates und
 // aktuelle Kurse sofort ankommen; ohne Verbindung die zuletzt gespeicherte Fassung zeigen.
 
-const CACHE = 'depot-v3';
+const CACHE = 'depot-v4';
 
 const DATEIEN = [
   './',

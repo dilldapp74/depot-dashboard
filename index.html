@@ -135,6 +135,26 @@ dialog .hint{color:var(--muted);font-size:12px;margin:8px 0 14px}
 }
 @media (min-width:641px){.msort{display:none}.kpi.wide{grid-column:auto}}
 
+/* ---------- Kursverlauf einer Position ---------- */
+tr.klick{cursor:pointer}
+tr.klick:hover td{background:var(--chip)}
+.pfeil{color:var(--muted);font-weight:400}
+#kdlg{width:min(760px,calc(100vw - 32px))}
+.khead{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:8px}
+.khead button{padding:4px 10px}
+.kkurs{font-size:22px;font-weight:600;font-variant-numeric:tabular-nums;margin-bottom:10px}
+.kkurs #k-tag{font-size:14px;font-weight:500}
+#kdlg .chartbox{height:280px}
+.kstats{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px;margin-top:12px}
+.kstats>div{background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:8px 10px}
+.kstats .l{color:var(--muted);font-size:12px}
+.kstats .v{font-weight:600;font-variant-numeric:tabular-nums}
+@media (max-width:640px){
+  #kdlg{width:100vw}
+  #kdlg .chartbox{height:240px}
+  .kstats{grid-template-columns:1fr 1fr}
+}
+
 /* ---------- Anmeldung (nur Supabase-Fassung) ---------- */
 #login{display:none;min-height:100dvh;align-items:center;justify-content:center;padding:24px 16px}
 body.abgemeldet #login{display:flex}
@@ -238,6 +258,21 @@ body.supabase .nur-lokal{display:none !important}
     <span class="nur-lokal">Alle Daten bleiben auf deinem Rechner.</span>
     <span class="nur-supabase">Daten liegen in deinem Supabase-Projekt, nur für dein Konto lesbar.</span></div>
 </div>
+
+<dialog id="kdlg">
+  <div class="khead">
+    <div>
+      <h2 id="k-name" style="margin:0;font-size:17px"></h2>
+      <div class="meta" id="k-sub"></div>
+    </div>
+    <button id="k-zu" title="Schließen" aria-label="Schließen">✕</button>
+  </div>
+  <div class="kkurs"><span id="k-preis"></span> <span id="k-tag"></span></div>
+  <div class="tabs" id="k-ranges"></div>
+  <div class="chartbox"><canvas id="k-chart"></canvas></div>
+  <div class="kstats" id="k-stats"></div>
+  <div class="meta" style="margin-top:10px">Tagesschlusskurse in EUR. Gestrichelt: dein Einstandskurs (Einstand ÷ Anteile), wenn er im angezeigten Bereich liegt.</div>
+</dialog>
 
 <dialog id="dlg">
   <h2 style="margin:0 0 4px;font-size:16px">Positionen bearbeiten</h2>
@@ -344,13 +379,13 @@ function renderTable(P,total){
   ms.innerHTML=COLS.map(([k,l])=>`<option value="${k}" ${k===sortKey?'selected':''}>${l}</option>`).join('');
   ms.onchange=()=>{sortKey=ms.value; sortDir=(sortKey==='name'||sortKey==='depot')?1:-1; localSet('sort',sortKey); renderTable(P,total);};
   if(!P.length){ t.tBodies[0].innerHTML=`<tr><td colspan="8" class="empty">Noch keine Positionen. Klicke auf „Positionen bearbeiten“.</td></tr>`; return; }
-  const rows = P.map(p=>({...p, weight: total? p.value/total*100 : 0}));
+  const rows = P.map((p,i)=>({...p, _i:i, weight: total? p.value/total*100 : 0}));
   rows.sort((a,b)=>{const x=a[sortKey]??-Infinity, y=b[sortKey]??-Infinity; return (typeof x==='string'? x.localeCompare(y) : x-y)*sortDir;});
   t.tBodies[0].innerHTML = rows.map(p=>{
     // data-label = Beschriftung in der Handy-Ansicht (Karten statt Tabelle)
     if(p.error) return `<tr><td class="name"><div class="n">${esc(p.name||p.id)}</div><div class="err">${esc(p.error)}</div></td><td class="l" data-label="Depot"><span>${esc(p.depot)}</span></td><td data-label="Anteile"><span>${qty(p.anteile)}</span></td><td colspan="5" class="only-d"></td></tr>`;
-    return `<tr>
-      <td class="name"><div class="n">${esc(p.name||p.symbol)}</div><div class="s">${esc(p.id)}${p.symbol&&p.symbol!==p.id?' · '+esc(p.symbol):''}${p.currency_src&&p.currency_src!=='EUR'?' · '+esc(p.currency_src):''}</div></td>
+    return `<tr class="klick" data-i="${p._i}" title="Kursverlauf anzeigen">
+      <td class="name"><div class="n">${esc(p.name||p.symbol)} <span class="pfeil">›</span></div><div class="s">${esc(p.id)}${p.symbol&&p.symbol!==p.id?' · '+esc(p.symbol):''}${p.currency_src&&p.currency_src!=='EUR'?' · '+esc(p.currency_src):''}</div></td>
       <td class="l" data-label="Depot"><span class="chip">${esc(p.depot||'–')}</span></td>
       <td data-label="Anteile"><span>${qty(p.anteile)}</span></td>
       <td data-label="Kurs"><span>${priceFmt(p.price)}</span></td>
@@ -359,6 +394,8 @@ function renderTable(P,total){
       <td data-label="Anteil"><span>${num(p.weight,1)} %</span></td>
       <td data-label="G/V" class="pl ${p.pl_abs!=null?cls(p.pl_abs):''}"><span>${p.pl_abs!=null? signed(p.pl_abs)+`<span class="s">${pct(p.pl_pct)}</span>`:'<span class="s">–</span>'}</span></td>
     </tr>`;}).join('');
+  // Antippen/Klicken öffnet den Kursverlauf der Position
+  t.tBodies[0].querySelectorAll('tr[data-i]').forEach(tr=>tr.onclick=()=>zeigeVerlauf(Number(tr.dataset.i)));
 }
 
 function renderDonut(ok,total){
@@ -402,6 +439,65 @@ function renderLine(ok){
     cfg.options.plugins.title={display:true,align:'start',color,text:`${range}: ${signed(ch)} (${pct(ch/series[0][1]*100)})`};
   }
   if(lineChart) lineChart.destroy(); lineChart=new Chart(document.getElementById('line'),cfg);
+}
+
+// ---- Kursverlauf einer Position ----
+const kdlg=document.getElementById('kdlg');
+let kIndex=null, kRange=localGet('krange')||'1J', kChart=null;
+function zeigeVerlauf(i){ kIndex=i; renderVerlauf(); if(!kdlg.open) kdlg.showModal(); }
+document.getElementById('k-zu').onclick=()=>kdlg.close();
+kdlg.addEventListener('click',e=>{ if(e.target===kdlg) kdlg.close(); });   // Klick neben den Dialog schließt
+// Das close-Ereignis kommt verzögert – nur aufräumen, wenn der Dialog inzwischen nicht wieder geöffnet wurde
+kdlg.addEventListener('close',()=>{ if(kdlg.open) return; kIndex=null; if(kChart){kChart.destroy(); kChart=null;} });
+
+function renderVerlauf(){
+  const p=data?.positions?.[kIndex];
+  if(!p || p.error){ kdlg.close(); return; }
+  document.getElementById('k-name').textContent=p.name||p.symbol;
+  document.getElementById('k-sub').textContent=[p.id, p.symbol!==p.id?p.symbol:'', p.exchange, p.depot].filter(Boolean).join(' · ');
+  document.getElementById('k-preis').textContent=priceFmt(p.price);
+  const kt=document.getElementById('k-tag'); kt.textContent=`${pct(p.day_pct)} heute`; kt.className=cls(p.day_pct);
+
+  const rb=document.getElementById('k-ranges');
+  rb.innerHTML=Object.keys(RANGES).map(r=>`<button class="${r===kRange?'on':''}" data-r="${r}">${r}</button>`).join('');
+  rb.querySelectorAll('button').forEach(b=>b.onclick=()=>{kRange=b.dataset.r; localSet('krange',kRange); renderVerlauf();});
+
+  const ab=Date.now()/1000-RANGES[kRange]*86400;
+  const reihe=(p.history||[]).filter(([t])=>t>=ab);
+  // Heutigen Kurs anhängen, falls der letzte Tagesschluss von gestern ist
+  if(reihe.length && new Date(reihe.at(-1)[0]*1000).toDateString()!==new Date().toDateString()) reihe.push([Date.now()/1000, p.price]);
+  const werte=reihe.map(r=>r[1]);
+  const einstandsKurs = p.einstand!=null && p.anteile ? Number(p.einstand)/p.anteile : null;
+  const up = werte.length>1 && werte.at(-1)>=werte[0];
+  const farbe = up?css('--pos'):css('--neg');
+
+  const datasets=[{data:werte,borderColor:farbe,backgroundColor:farbe+'22',fill:true,pointRadius:0,borderWidth:2,tension:.15,label:'Kurs'}];
+  // Einstandslinie nur zeigen, wenn sie nahe am Kursbereich liegt – sonst würde der Kurs platt gedrückt
+  const lo=Math.min(...werte), hi=Math.max(...werte), spanne=(hi-lo)||hi*0.1;
+  const zeigeEinstand = einstandsKurs && einstandsKurs>=lo-spanne && einstandsKurs<=hi+spanne;
+  if(zeigeEinstand) datasets.push({data:werte.map(()=>einstandsKurs),borderColor:css('--muted'),borderDash:[5,4],borderWidth:1.5,pointRadius:0,fill:false,label:'Einstand'});
+  const cfg={type:'line',data:{labels:reihe.map(r=>new Date(r[0]*1000).toLocaleDateString('de-DE',{day:'2-digit',month:'short',year:kRange==='1J'?'2-digit':undefined})),datasets},
+    options:{maintainAspectRatio:false,interaction:{mode:'index',intersect:false},
+      plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>`${c.dataset.label}: ${priceFmt(c.raw)}`}}},
+      scales:{x:{ticks:{color:css('--muted'),maxTicksLimit:innerWidth<=640?4:7,maxRotation:0},grid:{display:false}},
+              y:{ticks:{color:css('--muted'),callback:v=>priceFmt(v)},grid:{color:css('--line')}}}}};
+  if(kChart) kChart.destroy();
+  kChart=new Chart(document.getElementById('k-chart'),cfg);
+
+  const box=(l,v,c='')=>`<div><div class="l">${l}</div><div class="v ${c}">${v}</div></div>`;
+  const st=[];
+  if(werte.length>1){
+    const d=werte.at(-1)-werte[0];
+    st.push(box(`Veränderung ${kRange}`, `${pct(d/werte[0]*100)}`, cls(d)));
+    st.push(box(`Hoch ${kRange}`, priceFmt(Math.max(...werte))), box(`Tief ${kRange}`, priceFmt(Math.min(...werte))));
+  }
+  st.push(box('Positionswert', eur.format(p.value)));
+  if(einstandsKurs){
+    st.push(box('Einstandskurs', priceFmt(einstandsKurs)));
+    st.push(box('Gewinn / Verlust', `${signed(p.pl_abs)} (${pct(p.pl_pct)})`, cls(p.pl_abs)));
+  }
+  if(!werte.length) st.unshift(box('Kursverlauf','keine Daten'));
+  document.getElementById('k-stats').innerHTML=st.join('');
 }
 
 // ---- Bearbeiten ----
@@ -497,7 +593,7 @@ document.getElementById('p-an').onclick=async()=>{ try{ await pushAktivieren(); 
 document.getElementById('p-aus').onclick=async()=>{ try{ await pushAbmelden(); }catch(e){ alert(e.message); } pushAnzeigen(); };
 
 document.getElementById('refresh').onclick=load;
-const _render=render; render=function(){_render(); fillTargets(); loadAlerts();};
+const _render=render; render=function(){_render(); fillTargets(); loadAlerts(); if(kdlg.open) renderVerlauf();};
 
 // ---- Start: lokal sofort laden, mit Supabase erst nach der Anmeldung ----
 let timer=null;
