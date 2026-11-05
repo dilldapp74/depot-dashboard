@@ -1,0 +1,5 @@
+[
+  {"name": "BEISPIEL iShares Core MSCI World (Acc)", "id": "IE00B4L5Y983", "depot": "ING", "anteile": 10, "einstand": 1000},
+  {"name": "BEISPIEL SAP", "id": "SAP.DE", "depot": "ING", "anteile": 5, "einstand": 900},
+  {"name": "BEISPIEL Bitcoin", "id": "BTC-EUR", "depot": "Trade Republic", "anteile": 0.01, "einstand": 600}
+]

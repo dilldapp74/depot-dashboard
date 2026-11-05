@@ -1,0 +1,20 @@
+# Persönliche Depotdaten – niemals ins Repo
+holdings.json
+alerts.json
+*.tmp
+
+# Geheimnisse (für spätere Broker-/API-Schlüssel)
+.env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+
+# System / Editor
+.DS_Store
+.idea/
+.vscode/
+.claude/settings.local.json
