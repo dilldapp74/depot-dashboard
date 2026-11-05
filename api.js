@@ -40,8 +40,8 @@ function supabaseModus() {
   sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
   const pruefe = ({ error }) => { if (error) throw new Error(error.message); };
 
-  async function funktion(aktion) {
-    const { data, error } = await sb.functions.invoke('depot', { body: { aktion } });
+  async function funktion(aktion, daten = {}) {
+    const { data, error } = await sb.functions.invoke('depot', { body: { ...daten, aktion } });
     if (error) {
       let text = error.message;
       try { text = (await error.context.json()).error || text; } catch (e) { /* keine Details */ }
@@ -99,6 +99,19 @@ function supabaseModus() {
     },
     async check() { return funktion('pruefen'); },
     async test() { return funktion('test'); },
+    // Spieldepot: Orders, Status und Backtest laufen über die Edge Function, Verwaltung direkt über die Tabellen
+    async simStatus(depotId) { return funktion('sim_status', { depot_id: depotId }); },
+    async simOrder(order) { return funktion('sim_order', order); },
+    async simBacktest(typ, parameter, startkapital, gebuehr) { return funktion('sim_backtest', { typ, parameter, startkapital, gebuehr }); },
+    async simAnlegen(name, startkapital, gebuehr) {
+      const { data, error } = await sb.from('spieldepots').insert({ name, startkapital, gebuehr }).select('id').single();
+      if (error) throw new Error(error.message);
+      return data.id;
+    },
+    async simLoeschen(depotId) { pruefe(await sb.from('spieldepots').delete().eq('id', depotId)); },
+    async simRegelNeu(depotId, typ, parameter) { pruefe(await sb.from('sim_regeln').insert({ depot_id: depotId, typ, parameter })); },
+    async simRegelAktiv(id, aktiv) { pruefe(await sb.from('sim_regeln').update({ aktiv }).eq('id', id)); },
+    async simRegelLoeschen(id) { pruefe(await sb.from('sim_regeln').delete().eq('id', id)); },
   };
 }
 

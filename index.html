@@ -155,6 +155,42 @@ tr.klick:hover td{background:var(--chip)}
   .kstats{grid-template-columns:1fr 1fr}
 }
 
+/* ---------- Ansicht Depot / Spieldepot ---------- */
+.ansicht{display:flex;gap:4px;background:var(--chip);border-radius:10px;padding:4px;margin:-6px 0 16px;width:max-content;max-width:100%}
+.ansicht button{border:none;background:transparent;padding:6px 14px;border-radius:7px}
+.ansicht button.on{background:var(--card);box-shadow:0 1px 2px rgba(0,0,0,.12);font-weight:600}
+#v-spiel{display:none}
+body.v-spiel #v-spiel{display:block}
+body.v-spiel #v-echt, body.v-spiel .nur-echt{display:none !important}
+.sbar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:12px}
+.sbar select{font:inherit;padding:6px 8px;border:1px solid var(--line);border-radius:6px;background:var(--card);color:var(--text)}
+.sform{display:flex;flex-direction:column;gap:10px}
+.sform label{display:flex;flex-direction:column;gap:4px;font-size:13px;color:var(--muted)}
+.sform input:not([type=radio]):not([type=checkbox]),.sform select,.aform input{font:inherit;color:var(--text);padding:7px 9px;border:1px solid var(--line);border-radius:6px;background:var(--bg)}
+.sform label:has(input[type=checkbox]){flex-direction:row;align-items:center;color:var(--text)}
+.seg{display:flex;gap:16px}.seg label{flex-direction:row;align-items:center;gap:6px;color:var(--text);font-size:14px}
+.sfelder{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.sfelder .voll{grid-column:1 / -1}
+.regel{padding:9px 0;border-bottom:1px solid var(--line)}
+.regel .kopf{display:flex;gap:8px;align-items:center}
+.regel .kopf .txt{flex:1}
+.regel.off .txt{color:var(--muted);text-decoration:line-through}
+.regel button{padding:2px 8px;font-size:12px}
+.linkbtn{border:none;background:none;color:var(--neg);text-decoration:underline;padding:0;font-size:12px}
+#btdlg{width:min(760px,calc(100vw - 32px))}
+#btdlg .chartbox{height:280px}
+@media (max-width:640px){
+  .sfelder{grid-template-columns:1fr}
+  #btdlg{width:100vw}
+  .sform input:not([type=radio]):not([type=checkbox]),.sform select{font-size:16px}
+  #s-tbl thead{display:none}
+  #s-tbl tr{display:grid;grid-template-columns:1fr 1fr;column-gap:12px;padding:10px 0;border-bottom:1px solid var(--line)}
+  #s-tbl td{display:flex;justify-content:space-between;gap:8px;border:none;padding:2px 0;white-space:normal}
+  #s-tbl td::before{content:attr(data-label);color:var(--muted);font-size:12px}
+  #s-tbl td.name{grid-column:1 / -1;display:block}
+  #s-tbl td.name::before{content:none}
+}
+
 /* ---------- Anmeldung (nur Supabase-Fassung) ---------- */
 #login{display:none;min-height:100dvh;align-items:center;justify-content:center;padding:24px 16px}
 body.abgemeldet #login{display:flex}
@@ -185,14 +221,18 @@ body.supabase .nur-lokal{display:none !important}
   <header>
     <div>
       <h1>Depot-Übersicht</h1>
-      <div class="meta" id="stamp">Lade Kurse …</div>
+      <div class="meta nur-echt" id="stamp">Lade Kurse …</div>
     </div>
     <div style="display:flex;gap:8px;flex-wrap:wrap">
       <button id="logout" class="nur-supabase" title="Abmelden">Abmelden</button>
       <button id="refresh">Aktualisieren</button>
-      <button class="primary" id="edit"><span class="only-d">Positionen bearbeiten</span><span class="only-m">Bearbeiten</span></button>
+      <button class="primary nur-echt" id="edit"><span class="only-d">Positionen bearbeiten</span><span class="only-m">Bearbeiten</span></button>
     </div>
   </header>
+  <nav class="ansicht nur-supabase" aria-label="Ansicht">
+    <button data-v="echt" class="on">Mein Depot</button><button data-v="spiel">Spieldepot</button>
+  </nav>
+  <div id="v-echt">
   <div class="offline" id="offline">Keine Verbindung zum Server – angezeigt wird der letzte gespeicherte Stand.</div>
 
   <section class="kpis">
@@ -253,11 +293,106 @@ body.supabase .nur-lokal{display:none !important}
       <div id="a-log" class="alog"></div>
     </div>
   </section>
+  </div><!-- /v-echt -->
+
+  <!-- ---------- Spieldepot (Paper-Trading, nur online) ---------- -->
+  <div id="v-spiel" class="nur-supabase">
+    <section class="card" id="s-leer" hidden>
+      <h2>Spieldepot anlegen</h2>
+      <p class="meta" style="margin-top:0">Mit Spielgeld handeln und Regeln ausprobieren – ohne echtes Geld, ohne echte Orders.</p>
+      <form id="s-anlegen" class="aform">
+        <label class="meta">Name <input id="s-name" value="Spieldepot" maxlength="60"></label>
+        <label class="meta">Startkapital € <input id="s-kapital" value="25000" inputmode="decimal" style="width:110px"></label>
+        <label class="meta">Gebühr je Order € <input id="s-gebuehr" value="1" inputmode="decimal" style="width:70px"></label>
+        <button class="primary" type="submit">Anlegen</button>
+      </form>
+    </section>
+
+    <div id="s-inhalt" hidden>
+      <div class="sbar">
+        <select id="s-depot" aria-label="Spieldepot wählen"></select>
+        <span class="meta" id="s-stamp"></span>
+        <button id="s-neu" title="Weiteres Spieldepot anlegen">+ Spieldepot</button>
+      </div>
+      <section class="kpis">
+        <div class="card kpi"><div class="label">Gesamtwert</div><div class="val" id="s-total">–</div><div class="sub" id="s-start"></div></div>
+        <div class="card kpi"><div class="label">Spielgeld frei</div><div class="val" id="s-bar">–</div><div class="sub" id="s-gebinfo"></div></div>
+        <div class="card kpi"><div class="label">Gewinn / Verlust seit Start</div><div class="val" id="s-pl">–</div><div class="sub" id="s-plpct"></div></div>
+        <div class="card kpi"><div class="label">Orders</div><div class="val" id="s-anz">–</div><div class="sub" id="s-anzinfo"></div></div>
+      </section>
+
+      <section class="grid">
+        <div class="card">
+          <h2>Wertverlauf <span class="meta">(ein Wert pro Tag, ab 17:40)</span></h2>
+          <div class="chartbox"><canvas id="s-chart"></canvas></div>
+          <div class="meta" id="s-chartinfo"></div>
+        </div>
+        <div class="card">
+          <h2>Order aufgeben</h2>
+          <form id="s-order" class="sform">
+            <label>ISIN / Ticker<input id="s-kennung" list="s-liste" placeholder="z. B. EUNL.DE" required autocomplete="off"></label>
+            <datalist id="s-liste"></datalist>
+            <div class="seg" role="group" aria-label="Kaufen oder Verkaufen">
+              <label><input type="radio" name="s-seite" value="kauf" checked> Kaufen</label>
+              <label><input type="radio" name="s-seite" value="verkauf"> Verkaufen</label>
+            </div>
+            <label>Betrag €<input id="s-betrag" inputmode="decimal" placeholder="z. B. 1000"></label>
+            <label class="nur-verkauf"><input type="checkbox" id="s-alles"> Alles verkaufen</label>
+            <button class="primary" type="submit" id="s-senden">Order ausführen</button>
+            <div class="meta" id="s-orderinfo">Ausgeführt zum aktuellen Kurs (teils verzögert), zzgl. Gebühr.</div>
+          </form>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2>Positionen im Spieldepot</h2>
+        <div class="tablewrap"><table id="s-tbl"><thead><tr><th class="l">Position</th><th>Anteile</th><th>Einstand</th><th>Kurs</th><th>Wert</th><th>Heute</th><th>G/V</th></tr></thead><tbody></tbody></table></div>
+      </section>
+
+      <section class="grid" style="margin-top:16px">
+        <div class="card">
+          <h2>Regeln <span class="meta">· laufen werktags ab 17:40 automatisch</span></h2>
+          <div id="s-regeln"></div>
+          <form id="s-regelform" class="sform" style="margin-top:12px">
+            <label>Neue Regel
+              <select id="s-typ">
+                <option value="sparplan">Sparplan – fester Betrag jeden Monat</option>
+                <option value="nachkauf">Nachkaufen bei Rückgang</option>
+                <option value="trend">Trendfolge – gleitender Durchschnitt</option>
+                <option value="rebalancing">Rebalancing auf Zielgewichte</option>
+              </select>
+            </label>
+            <div id="s-felder" class="sfelder"></div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap">
+              <button type="button" id="s-bt">Backtest (1 Jahr)</button>
+              <button class="primary" type="submit">+ Regel</button>
+            </div>
+          </form>
+        </div>
+        <div class="card">
+          <h2>Letzte Orders</h2>
+          <div id="s-orders" class="alog"></div>
+        </div>
+      </section>
+      <div class="foot">Spielgeld – es werden keine echten Orders ausgeführt. Regeln sind technische Bausteine zum Ausprobieren, keine Anlageempfehlung.
+        <button id="s-loeschen" class="linkbtn">Dieses Spieldepot löschen</button></div>
+    </div>
+  </div><!-- /v-spiel -->
 
   <div class="foot">Kurse von Yahoo Finance, teils verzögert, ohne Gewähr. Fremdwährungen in EUR umgerechnet.
     <span class="nur-lokal">Alle Daten bleiben auf deinem Rechner.</span>
     <span class="nur-supabase">Daten liegen in deinem Supabase-Projekt, nur für dein Konto lesbar.</span></div>
 </div>
+
+<dialog id="btdlg">
+  <div class="khead">
+    <div><h2 id="bt-titel" style="margin:0;font-size:17px">Backtest</h2><div class="meta" id="bt-sub"></div></div>
+    <button id="bt-zu" aria-label="Schließen">✕</button>
+  </div>
+  <div class="chartbox"><canvas id="bt-chart"></canvas></div>
+  <div class="kstats" id="bt-stats"></div>
+  <div class="meta" id="bt-hinweis" style="margin-top:10px"></div>
+</dialog>
 
 <dialog id="kdlg">
   <div class="khead">
@@ -626,5 +761,6 @@ if(API.modus==='supabase'){
   starten();
 }
 </script>
+<script src="spiel.js"></script>
 </body>
 </html>
