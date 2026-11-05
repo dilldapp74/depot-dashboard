@@ -288,6 +288,8 @@ STATIC = {
     "/": ("index.html", "text/html; charset=utf-8"),
     "/manifest.webmanifest": ("manifest.webmanifest", "application/manifest+json"),
     "/sw.js": ("sw.js", "text/javascript; charset=utf-8"),
+    "/config.js": ("config.js", "text/javascript; charset=utf-8"),
+    "/api.js": ("api.js", "text/javascript; charset=utf-8"),
     "/favicon.ico": ("icons/favicon-32.png", "image/png"),
     **{f"/icons/{n}": (f"icons/{n}", "image/png") for n in (
         "icon-192.png", "icon-512.png", "icon-maskable-512.png", "apple-touch-icon.png", "favicon-32.png")},

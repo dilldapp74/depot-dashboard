@@ -1,19 +1,24 @@
-// Service Worker: macht das Dashboard installierbar und offline startbar.
+// Service Worker: macht das Dashboard installierbar, offline startbar und empfängt Push-Mitteilungen.
 // Strategie (wie im Kanban-Board): immer zuerst aus dem Netz laden, damit Updates und
 // aktuelle Kurse sofort ankommen; ohne Verbindung die zuletzt gespeicherte Fassung zeigen.
 
-const CACHE = 'depot-v1';
+const CACHE = 'depot-v2';
 
 const DATEIEN = [
   './',
+  './config.js',
+  './api.js',
   './manifest.webmanifest',
   './icons/icon-192.png',
   './icons/icon-512.png',
   './icons/favicon-32.png',
-  'https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js'
+  'https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js',
+  'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.110.0/dist/umd/supabase.js'
 ];
+const CDNS = ['cdnjs.cloudflare.com', 'cdn.jsdelivr.net'];
 
-// Diese Daten werden als „letzter Stand“ für offline gemerkt (bleiben nur auf diesem Gerät)
+// Lokale Fassung (server.py): diese Daten als „letzter Stand“ merken (bleiben nur auf diesem Gerät).
+// Supabase-Anfragen gehen an *.supabase.co und werden nie zwischengespeichert.
 const DATEN = ['/api/portfolio', '/api/alerts'];
 
 self.addEventListener('install', ereignis => {
@@ -35,10 +40,10 @@ self.addEventListener('fetch', ereignis => {
   if (anfrage.method !== 'GET') return;
 
   const eigene = url.origin === self.location.origin;
-  const cdn = url.hostname === 'cdnjs.cloudflare.com';
-  const istDaten = eigene && DATEN.includes(url.pathname);
+  const cdn = CDNS.includes(url.hostname);
+  const istDaten = eigene && DATEN.some(d => url.pathname.endsWith(d));
   // Andere API-Aufrufe (z. B. Bearbeiten-Dialog) nie aus dem Cache bedienen
-  if (!(cdn || (eigene && (!url.pathname.startsWith('/api/') || istDaten)))) return;
+  if (!(cdn || (eigene && (!url.pathname.includes('/api/') || istDaten)))) return;
 
   ereignis.respondWith(
     fetch(anfrage)
@@ -58,5 +63,32 @@ self.addEventListener('fetch', ereignis => {
         kopf.set('X-Offline', '1');
         return new Response(await gespeichert.blob(), { status: 200, headers: kopf });
       })
+  );
+});
+
+// ---------- Push-Mitteilungen (kommen von der Edge Function "depot") ----------
+
+self.addEventListener('push', ereignis => {
+  let nachricht = {};
+  try {
+    nachricht = ereignis.data ? ereignis.data.json() : {};
+  } catch (e) { /* kein gültiges JSON – Standardtext zeigen */ }
+  ereignis.waitUntil(self.registration.showNotification(nachricht.titel || 'Depot-Alert', {
+    body: nachricht.text || '',
+    icon: 'icons/icon-192.png',
+    badge: 'icons/favicon-32.png',
+    tag: nachricht.tag,           // gleicher Alert: alte Nachricht wird ersetzt statt gestapelt
+    data: { url: './' }
+  }));
+});
+
+// Antippen öffnet die App (oder holt das offene Fenster nach vorn)
+self.addEventListener('notificationclick', ereignis => {
+  ereignis.notification.close();
+  ereignis.waitUntil(
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(fenster => {
+      for (const f of fenster) if ('focus' in f) return f.focus();
+      return self.clients.openWindow(ereignis.notification.data.url);
+    })
   );
 });

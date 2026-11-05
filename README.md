@@ -4,7 +4,19 @@ Lokales Dashboard für alle Depots (ING, Trade Republic) mit Live-Kursen, Gewinn
 Aufteilung, Wertverlauf und Kurs-Alerts als Mac-Mitteilung.
 
 Die Positionen werden von Hand gepflegt – kein Broker-Zugang, keine Exporte nötig.
-**Alle Depotdaten bleiben auf dem eigenen Rechner** und sind per `.gitignore` vom Repo ausgeschlossen.
+**Depotdaten sind nie im Repo.**
+
+Zwei Betriebsarten (Auswahl über `config.js`):
+
+| | lokal | online (Supabase) |
+|---|---|---|
+| Start | `python3 server.py` | https://dilldapp74.github.io/depot-dashboard/ |
+| Daten | `holdings.json`, `alerts.json` auf dem Mac | Supabase-Datenbank, nur fürs eigene Konto lesbar |
+| Kurse | `server.py` | Edge Function `depot` |
+| Alerts | jede Minute, Mac-Mitteilung, solange der Server läuft | alle 5 Minuten per Cron, Push auf Mac und Android |
+| Geräte | nur dieser Mac | Mac und Android, mit Anmeldung |
+
+Einrichtung der Online-Fassung: [ANLEITUNG.md](ANLEITUNG.md).
 
 ## Funktionen
 
@@ -74,7 +86,7 @@ Bricht ab, wenn `holdings.json`, `alerts.json`, `.env`-Dateien oder API-Schlüss
 ## Nächste Schritte
 
 1. ~~PWA: auf Mac und Android als App installierbar, Handy-Layout~~ ✓
-2. Server dauerhaft betreiben (Raspberry Pi / Cloud) + Zugriff per Tailscale, Web-Push statt Mac-Mitteilung
+2. ~~Online mit Supabase: Anmeldung, Cron-Alerts, Web-Push, GitHub Pages~~ ✓ (Einrichtung siehe ANLEITUNG.md)
 3. Paper-Trading mit Spielgeld
 
 Siehe [CLAUDE.md](CLAUDE.md) für Aufbau und Konventionen.
