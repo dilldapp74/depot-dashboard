@@ -12,6 +12,22 @@ if [ -n "$private" ]; then
     failed=1
 fi
 
+# Lokale Geheimnisse für Supabase
+secret_files=$(git ls-files --cached | grep -E '(^|/)\.secrets/' || true)
+if [ -n "$secret_files" ]; then
+    echo "FEHLER: Geheimnis-Datei im Repo: $secret_files"
+    failed=1
+fi
+if git grep --cached -n -I -E '(VAPID_PRIVATE_KEY|CRON_SECRET)=[A-Za-z0-9_-]{16,}' -- . ':!scripts/check_secrets.sh'; then
+    echo "FEHLER: VAPID-Privatschlüssel oder Cron-Geheimnis im Repo (siehe oben)."
+    failed=1
+fi
+# Der geheime Supabase-Schlüssel gehört nie ins Repo (der öffentliche "sb_publishable_…" schon)
+if git grep --cached -n -I -E 'sb_secret_[A-Za-z0-9_-]{10,}|"role"\s*:\s*"service_role"' -- . ':!scripts/check_secrets.sh'; then
+    echo "FEHLER: Geheimer Supabase-Schlüssel im Repo (siehe oben)."
+    failed=1
+fi
+
 # .env-Dateien (die Vorlage .env.example ist erlaubt)
 env_files=$(git ls-files --cached | grep -E '(^|/)\.env(\..+)?$' | grep -v '\.env\.example$' || true)
 if [ -n "$env_files" ]; then

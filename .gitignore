@@ -18,3 +18,6 @@ __pycache__/
 .idea/
 .vscode/
 .claude/settings.local.json
+
+# Lokale Geheimnisse (VAPID-Privatschlüssel, Cron-Geheimnis) – nur zum Eintragen in Supabase
+.secrets/

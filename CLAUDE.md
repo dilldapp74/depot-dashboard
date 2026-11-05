@@ -20,6 +20,27 @@ und Alerts. Später: als App auf Mac und Android (PWA), Server im Dauerbetrieb, 
 - Code einfach und gut lesbar halten, Kommentare auf Deutsch.
 - Der Nutzer ist Hobby-Entwickler: wichtige Schritte kurz erklären.
 
+## Zwei Betriebsarten (api.js)
+- `config.js` ohne `SUPABASE_URL` → **lokal**: `api.js` spricht mit `server.py` (`api/…`, relative Pfade).
+- Mit `SUPABASE_URL` → **online**: Anmeldung (E-Mail/Passwort, Registrierung im Supabase-Dashboard aus),
+  Tabellen per supabase-js, Kurse/Alerts/Push über die Edge Function `depot`.
+- Beide liefern dieselben Formate (Position `{uid?, name, id, depot, anteile, einstand, symbol}`,
+  Regel `{id?, type, target, value, enabled}`), damit `index.html` nur eine Fassung braucht.
+- CSS-Klassen `nur-lokal` / `nur-supabase`; `body.supabase`, `body.abgemeldet` steuern die Anzeige.
+- Letzter Stand liegt zusätzlich in `localStorage` (`dd.letzterStand`) für den Offline-Start; Abmelden löscht ihn.
+
+## Supabase
+- `supabase/schema.sql` (wiederholbar): Tabellen `positionen`, `alert_regeln`, `alert_zustand`,
+  `alert_protokoll`, `push_abos`; RLS „nur eigene Zeilen“, `anon` ohne Rechte, `alert_zustand` nur für die Function.
+  Trigger legt für neue Konten die zwei Standard-Alerts an. Cron-Block am Ende (auskommentiert).
+- `supabase/functions/depot/index.ts`: Aktionen `portfolio`, `pruefen`, `test` (Anmelde-Token) und
+  `cron` (Kopfzeile `x-cron-secret`). „Verify JWT“ aus – die Funktion prüft selbst. Logik = `server.py`.
+- Geheimnisse nur als Function-Secrets (`VAPID_PRIVATE_KEY`, `CRON_SECRET`, …); lokal in
+  `.secrets/supabase-geheimnisse.txt` (gitignored). `config.js` enthält nur öffentliche Werte.
+- Deployt wird von Hand im Supabase-Dashboard (kein CLI installiert), siehe `ANLEITUNG.md`.
+- Testen ohne Deno: Funktion mit Node und nachgebauter Datenbank ausführen (Imports durch Stubs ersetzen).
+- Yahoo-Suche findet nicht jede ISIN (z. B. DE0007030033) – dann Ticker eintragen (`RHM.DE`).
+
 ## PWA
 - `manifest.webmanifest`, `icons/` (aus `scripts/make_icons.py`), `sw.js`
 - `sw.js`: „Netz zuerst, sonst Cache“ für Seite, Symbole, Chart.js und `/api/portfolio` + `/api/alerts`

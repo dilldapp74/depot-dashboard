@@ -14,6 +14,13 @@
 <meta name="apple-mobile-web-app-title" content="Depot">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script src="config.js"></script>
+<!-- integrity: Der Browser führt die Bibliothek nur aus, wenn sie Byte für Byte unverändert ist.
+     Bei einem Versionswechsel neu berechnen (siehe README) und die URL in sw.js anpassen. -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.110.0/dist/umd/supabase.js"
+        integrity="sha384-3wY11tldQ5+yWqAvmTN4XtQvnjoTva0cV15O/O/O5NTtp0ivVopSzLOzsVXWZse9"
+        crossorigin="anonymous"></script>
+<script src="api.js"></script>
 <style>
 :root{
   --bg:#f6f7f9;--card:#fff;--text:#14171c;--muted:#667085;--line:#e4e7ec;
@@ -127,16 +134,41 @@ dialog .hint{color:var(--muted);font-size:12px;margin:8px 0 14px}
   .aform select{flex:1 1 100%}
 }
 @media (min-width:641px){.msort{display:none}.kpi.wide{grid-column:auto}}
+
+/* ---------- Anmeldung (nur Supabase-Fassung) ---------- */
+#login{display:none;min-height:100dvh;align-items:center;justify-content:center;padding:24px 16px}
+body.abgemeldet #login{display:flex}
+body.abgemeldet .wrap{display:none}
+#login form{width:min(360px,100%);display:flex;flex-direction:column;gap:10px}
+#login img{width:64px;height:64px;border-radius:14px;align-self:center}
+#login h1{text-align:center;margin-bottom:6px}
+#login input{font:inherit;font-size:16px;padding:10px 12px;border:1px solid var(--line);border-radius:8px;background:var(--card);color:var(--text)}
+#login button{padding:10px}
+#login .err{min-height:1.2em}
+body:not(.supabase) .nur-supabase{display:none !important}
+body.supabase .nur-lokal{display:none !important}
+.pushzeile{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:12px;font-size:13px}
 </style>
 </head>
 <body>
+<section id="login">
+  <form id="login-form">
+    <img src="icons/icon-192.png" alt="">
+    <h1>Depot-Dashboard</h1>
+    <input id="l-mail" type="email" autocomplete="username" placeholder="E-Mail" required>
+    <input id="l-pass" type="password" autocomplete="current-password" placeholder="Passwort" required>
+    <button class="primary" type="submit">Anmelden</button>
+    <div class="err" id="l-err"></div>
+  </form>
+</section>
 <div class="wrap">
   <header>
     <div>
       <h1>Depot-Übersicht</h1>
       <div class="meta" id="stamp">Lade Kurse …</div>
     </div>
-    <div style="display:flex;gap:8px">
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <button id="logout" class="nur-supabase" title="Abmelden">Abmelden</button>
       <button id="refresh">Aktualisieren</button>
       <button class="primary" id="edit"><span class="only-d">Positionen bearbeiten</span><span class="only-m">Bearbeiten</span></button>
     </div>
@@ -171,8 +203,15 @@ dialog .hint{color:var(--muted);font-size:12px;margin:8px 0 14px}
   <section class="grid" style="margin-top:16px">
     <div class="card">
       <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:12px">
-        <h2 style="margin:0">Alerts <span class="meta">· Mac-Mitteilung, geprüft jede Minute solange der Server läuft</span></h2>
+        <h2 style="margin:0">Alerts
+          <span class="meta nur-lokal">· Mac-Mitteilung, geprüft jede Minute solange der Server läuft</span>
+          <span class="meta nur-supabase">· Push-Mitteilung, geprüft alle 5 Minuten</span></h2>
         <button id="a-test">Test-Mitteilung</button>
+      </div>
+      <div class="pushzeile nur-supabase" style="margin:0 0 10px">
+        <span>Auf diesem Gerät: <b id="p-status">…</b></span>
+        <button id="p-an">Push aktivieren</button>
+        <button id="p-aus">Ausschalten</button>
       </div>
       <div id="a-rules"></div>
       <form id="a-form" class="aform">
@@ -195,7 +234,9 @@ dialog .hint{color:var(--muted);font-size:12px;margin:8px 0 14px}
     </div>
   </section>
 
-  <div class="foot">Kurse von Yahoo Finance, teils verzögert, ohne Gewähr. Fremdwährungen in EUR umgerechnet. Alle Daten bleiben auf deinem Rechner.</div>
+  <div class="foot">Kurse von Yahoo Finance, teils verzögert, ohne Gewähr. Fremdwährungen in EUR umgerechnet.
+    <span class="nur-lokal">Alle Daten bleiben auf deinem Rechner.</span>
+    <span class="nur-supabase">Daten liegen in deinem Supabase-Projekt, nur für dein Konto lesbar.</span></div>
 </div>
 
 <dialog id="dlg">
@@ -227,15 +268,27 @@ let range = localGet('range') || '1J', sortKey = localGet('sort') || 'value', so
 function localGet(k){try{return localStorage.getItem('dd.'+k)}catch(e){return null}}
 function localSet(k,v){try{localStorage.setItem('dd.'+k,v)}catch(e){}}
 
+// Letzten Stand auf dem Gerät merken, damit die App auch ohne Verbindung etwas zeigt
+const STAND='dd.letzterStand';
+let laedt=false;
 async function load(){
+  if(laedt) return; laedt=true;
   document.getElementById('stamp').textContent = 'Lade Kurse …';
+  let offline=false;
   try{
-    const r = await fetch('/api/portfolio');
-    const offline = r.headers.get('X-Offline') === '1';   // vom Service Worker: alter Stand
-    data = await r.json(); render();
-    document.getElementById('offline').classList.toggle('on', offline);
-    if(offline) document.getElementById('stamp').textContent = 'Letzter Stand: '+new Date(data.generated*1000).toLocaleString('de-DE');
-  }catch(e){ document.getElementById('stamp').textContent = 'Keine Verbindung zum Server'; document.getElementById('offline').classList.add('on'); }
+    data = await API.portfolio();
+    offline = !!data._offline;
+    if(!offline) localSet(STAND, JSON.stringify(data));
+  }catch(e){
+    console.warn('Portfolio:', e);
+    try{ data = JSON.parse(localGet(STAND)); }catch(_){ data = null; }
+    offline = true;
+    if(!data){ document.getElementById('stamp').textContent = 'Keine Verbindung: '+e.message; document.getElementById('offline').classList.add('on'); laedt=false; return; }
+  }
+  laedt=false;
+  render();
+  document.getElementById('offline').classList.toggle('on', offline);
+  if(offline) document.getElementById('stamp').textContent = 'Letzter Stand: '+new Date(data.generated*1000).toLocaleString('de-DE');
 }
 
 // Service Worker anmelden (macht die App installierbar und offline startbar)
@@ -355,7 +408,7 @@ function renderLine(ok){
 const dlg=document.getElementById('dlg'); let original=[];
 function erow(h={}){
   const tr=document.createElement('tr');
-  tr.dataset.symbol=h.symbol||''; tr.dataset.origId=h.id||'';
+  tr.dataset.symbol=h.symbol||''; tr.dataset.origId=h.id||''; tr.dataset.uid=h.uid||'';
   tr.innerHTML=`<td data-label="Name"><input data-f="name" value="${esc(h.name)}" placeholder="z. B. Vanguard All-World"></td>
     <td data-label="ISIN / Ticker"><input data-f="id" value="${esc(h.id)}" placeholder="ISIN oder Ticker"></td>
     <td data-label="Depot"><input data-f="depot" value="${esc(h.depot)}" placeholder="Trade Republic / ING"></td>
@@ -366,7 +419,7 @@ function erow(h={}){
   return tr;
 }
 document.getElementById('edit').onclick=async()=>{
-  original=await (await fetch('/api/holdings')).json();
+  try{ original=await API.holdings(); }catch(e){ return alert('Positionen konnten nicht geladen werden: '+e.message); }
   const tb=document.querySelector('#etbl tbody'); tb.innerHTML='';
   (original.length?original:[{}]).forEach(h=>tb.appendChild(erow(h)));
   dlg.showModal();
@@ -377,10 +430,10 @@ document.getElementById('save').onclick=async()=>{
   const items=[...document.querySelectorAll('#etbl tbody tr')].map(tr=>{
     const o={}; tr.querySelectorAll('input').forEach(i=>o[i.dataset.f]=i.value.trim());
     if(tr.dataset.symbol && tr.dataset.origId===o.id) o.symbol=tr.dataset.symbol; // Symbol nur behalten, wenn Kennung gleich
+    if(tr.dataset.uid) o.uid=tr.dataset.uid;
     return o;
   }).filter(o=>o.id);
-  const r=await fetch('/api/holdings',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(items)});
-  if(!r.ok){alert('Speichern fehlgeschlagen: '+(await r.json()).error); return;}
+  try{ await API.saveHoldings(items); }catch(e){ return alert('Speichern fehlgeschlagen: '+e.message); }
   dlg.close(); load();
 };
 
@@ -395,7 +448,7 @@ function ruleText(r){
 }
 async function loadAlerts(){
   try{
-    const a=await (await fetch('/api/alerts')).json(); rules=a.rules;
+    const a=await API.alerts(); rules=a.rules;
     document.getElementById('a-rules').innerHTML = rules.length? rules.map((r,i)=>`<div class="rule ${r.enabled?'':'off'}">
       <input type="checkbox" data-i="${i}" ${r.enabled?'checked':''} title="Aktiv">
       <span class="txt">${esc(ruleText(r))}</span><button data-del="${i}" title="Löschen">✕</button></div>`).join('')
@@ -404,12 +457,11 @@ async function loadAlerts(){
     document.querySelectorAll('#a-rules [data-del]').forEach(b=>b.onclick=()=>{rules.splice(b.dataset.del,1); saveRules();});
     document.getElementById('a-log').innerHTML = a.log.length? a.log.map(e=>`<div class="e"><b>${esc(e.title)}</b>${esc(e.message)}
       <div class="s">${new Date(e.time*1000).toLocaleString('de-DE')}</div></div>`).join('') : '<div class="meta">Noch nichts ausgelöst.</div>';
-  }catch(e){}
+  }catch(e){ console.warn('Alerts:', e); }
 }
 async function saveRules(){
-  const r=await fetch('/api/alerts/rules',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(rules)});
-  if(!r.ok) alert('Speichern fehlgeschlagen: '+(await r.json()).error);
-  await fetch('/api/alerts/check',{method:'POST'}); loadAlerts();
+  try{ await API.saveRules(rules); await API.check(); }catch(e){ alert('Speichern fehlgeschlagen: '+e.message); }
+  loadAlerts();
 }
 function fillTargets(){
   const t=document.getElementById('a-type').value, sel=document.getElementById('a-target');
@@ -428,11 +480,55 @@ document.getElementById('a-form').onsubmit=e=>{
   rules.push({type,target:type==='portfolio_day_move'?'*':document.getElementById('a-target').value,value,enabled:true});
   document.getElementById('a-value').value=''; saveRules();
 };
-document.getElementById('a-test').onclick=()=>fetch('/api/alerts/test',{method:'POST'});
+document.getElementById('a-test').onclick=async()=>{
+  try{ const r=await API.test(); if(r && r.push===false) alert('Auf dem Server sind noch keine Push-Schlüssel hinterlegt.'); }
+  catch(e){ alert('Test fehlgeschlagen: '+e.message); }
+};
+
+// ---- Push-Mitteilungen (nur Supabase) ----
+async function pushAnzeigen(){
+  if(API.modus!=='supabase') return;
+  const st=await pushStatus().catch(()=>'nicht verfügbar');
+  document.getElementById('p-status').textContent=st;
+  document.getElementById('p-an').style.display = st==='aus'?'':'none';
+  document.getElementById('p-aus').style.display = st==='aktiv'?'':'none';
+}
+document.getElementById('p-an').onclick=async()=>{ try{ await pushAktivieren(); }catch(e){ alert(e.message); } pushAnzeigen(); };
+document.getElementById('p-aus').onclick=async()=>{ try{ await pushAbmelden(); }catch(e){ alert(e.message); } pushAnzeigen(); };
 
 document.getElementById('refresh').onclick=load;
 const _render=render; render=function(){_render(); fillTargets(); loadAlerts();};
-load(); setInterval(load,60000);
+
+// ---- Start: lokal sofort laden, mit Supabase erst nach der Anmeldung ----
+let timer=null;
+function starten(){ if(timer) return; load(); pushAnzeigen(); timer=setInterval(load,60000); }
+function stoppen(){ clearInterval(timer); timer=null; }
+
+if(API.modus==='supabase'){
+  document.body.classList.add('supabase');
+  const zeige=(session)=>{ document.body.classList.toggle('abgemeldet', !session); session? starten() : stoppen(); };
+  sb.auth.getSession().then(({data:{session}})=>{
+    // Ohne Netz trotzdem den letzten Stand zeigen, wenn hier schon einmal jemand angemeldet war
+    zeige(session || (!navigator.onLine && localGet(STAND) ? {offline:true} : null));
+  });
+  sb.auth.onAuthStateChange((_ereignis, session)=>zeige(session));
+  document.getElementById('login-form').onsubmit=async e=>{
+    e.preventDefault();
+    const err=document.getElementById('l-err'); err.textContent='';
+    const { error } = await sb.auth.signInWithPassword({ email:document.getElementById('l-mail').value.trim(),
+      password:document.getElementById('l-pass').value });
+    if(error) err.textContent = error.message==='Invalid login credentials' ? 'E-Mail oder Passwort falsch.' : error.message;
+    else document.getElementById('l-pass').value='';
+  };
+  document.getElementById('logout').onclick=async()=>{
+    if(!confirm('Abmelden? Push-Mitteilungen auf diesem Gerät werden dabei ausgeschaltet.')) return;
+    try{ await pushAbmelden(); }catch(e){}
+    try{ localStorage.removeItem(STAND); }catch(e){}
+    await sb.auth.signOut();
+  };
+} else {
+  starten();
+}
 </script>
 </body>
 </html>
