@@ -18,6 +18,16 @@ Zwei Betriebsarten (Auswahl über `config.js`):
 
 Einrichtung der Online-Fassung: [ANLEITUNG.md](ANLEITUNG.md).
 
+### Nur online
+
+- **Spieldepot (Paper-Trading):** Spielgeld-Depot (Start z. B. 25.000 €, Gebühr je Order), manuelle Orders
+  zum aktuellen Kurs, Regeln (Sparplan, Nachkaufen bei Rückgang, Trendfolge, Rebalancing), die werktags ab
+  17:40 automatisch handeln, und ein Backtest über das letzte Jahr im Vergleich zu „am Start kaufen“.
+- **Recherche:** Löst ein Tagesbewegungs-Alert aus, fasst Claude (Websuche) die Nachrichtenlage zusammen –
+  als Push und im Kursverlauf-Dialog. Höchstens 5 je Tag, Budget 5 € je Monat. Ohne `ANTHROPIC_API_KEY`
+  läuft ein Demo-Modus ohne Kosten. Kostenlos jederzeit: Knopf **„In Claude nachfragen“** (öffnet claude.ai
+  mit fertiger Frage, nutzt das eigene Claude-Abo).
+
 ## Funktionen
 
 - Gesamtwert, Tagesänderung, Gewinn/Verlust seit Kauf, Wert je Depot
@@ -87,6 +97,7 @@ Bricht ab, wenn `holdings.json`, `alerts.json`, `.env`-Dateien oder API-Schlüss
 
 1. ~~PWA: auf Mac und Android als App installierbar, Handy-Layout~~ ✓
 2. ~~Online mit Supabase: Anmeldung, Cron-Alerts, Web-Push, GitHub Pages~~ ✓ (Einrichtung siehe ANLEITUNG.md)
-3. Paper-Trading mit Spielgeld
+3. ~~Paper-Trading: Spieldepot mit Regeln und Backtest~~ ✓ (nur online)
+4. ~~Recherche bei starken Bewegungen (Claude mit Websuche)~~ ✓ – Demo-Modus, bis ein API-Schlüssel hinterlegt ist
 
 Siehe [CLAUDE.md](CLAUDE.md) für Aufbau und Konventionen.

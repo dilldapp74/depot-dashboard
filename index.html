@@ -149,10 +149,52 @@ tr.klick:hover td{background:var(--chip)}
 .kstats>div{background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:8px 10px}
 .kstats .l{color:var(--muted);font-size:12px}
 .kstats .v{font-weight:600;font-variant-numeric:tabular-nums}
+.krech{margin-top:14px;border-top:1px solid var(--line);padding-top:12px}
+.krech-kopf{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:6px}
+.krech h3{margin:0;font-size:14px}
+.krech ul{margin:6px 0;padding-left:18px}
+.krech .quellen a{color:var(--accent);font-size:12px;margin-right:10px;word-break:break-word}
+.krech .kurz{color:var(--text);font-weight:500}
 @media (max-width:640px){
   #kdlg{width:100vw}
   #kdlg .chartbox{height:240px}
   .kstats{grid-template-columns:1fr 1fr}
+}
+
+/* ---------- Ansicht Depot / Spieldepot ---------- */
+.ansicht{display:flex;gap:4px;background:var(--chip);border-radius:10px;padding:4px;margin:-6px 0 16px;width:max-content;max-width:100%}
+.ansicht button{border:none;background:transparent;padding:6px 14px;border-radius:7px}
+.ansicht button.on{background:var(--card);box-shadow:0 1px 2px rgba(0,0,0,.12);font-weight:600}
+#v-spiel{display:none}
+body.v-spiel #v-spiel{display:block}
+body.v-spiel #v-echt, body.v-spiel .nur-echt{display:none !important}
+.sbar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:12px}
+.sbar select{font:inherit;padding:6px 8px;border:1px solid var(--line);border-radius:6px;background:var(--card);color:var(--text)}
+.sform{display:flex;flex-direction:column;gap:10px}
+.sform label{display:flex;flex-direction:column;gap:4px;font-size:13px;color:var(--muted)}
+.sform input:not([type=radio]):not([type=checkbox]),.sform select,.aform input{font:inherit;color:var(--text);padding:7px 9px;border:1px solid var(--line);border-radius:6px;background:var(--bg)}
+.sform label:has(input[type=checkbox]){flex-direction:row;align-items:center;color:var(--text)}
+.seg{display:flex;gap:16px}.seg label{flex-direction:row;align-items:center;gap:6px;color:var(--text);font-size:14px}
+.sfelder{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.sfelder .voll{grid-column:1 / -1}
+.regel{padding:9px 0;border-bottom:1px solid var(--line)}
+.regel .kopf{display:flex;gap:8px;align-items:center}
+.regel .kopf .txt{flex:1}
+.regel.off .txt{color:var(--muted);text-decoration:line-through}
+.regel button{padding:2px 8px;font-size:12px}
+.linkbtn{border:none;background:none;color:var(--neg);text-decoration:underline;padding:0;font-size:12px}
+#btdlg{width:min(760px,calc(100vw - 32px))}
+#btdlg .chartbox{height:280px}
+@media (max-width:640px){
+  .sfelder{grid-template-columns:1fr}
+  #btdlg{width:100vw}
+  .sform input:not([type=radio]):not([type=checkbox]),.sform select{font-size:16px}
+  #s-tbl thead{display:none}
+  #s-tbl tr{display:grid;grid-template-columns:1fr 1fr;column-gap:12px;padding:10px 0;border-bottom:1px solid var(--line)}
+  #s-tbl td{display:flex;justify-content:space-between;gap:8px;border:none;padding:2px 0;white-space:normal}
+  #s-tbl td::before{content:attr(data-label);color:var(--muted);font-size:12px}
+  #s-tbl td.name{grid-column:1 / -1;display:block}
+  #s-tbl td.name::before{content:none}
 }
 
 /* ---------- Anmeldung (nur Supabase-Fassung) ---------- */
@@ -185,14 +227,18 @@ body.supabase .nur-lokal{display:none !important}
   <header>
     <div>
       <h1>Depot-Übersicht</h1>
-      <div class="meta" id="stamp">Lade Kurse …</div>
+      <div class="meta nur-echt" id="stamp">Lade Kurse …</div>
     </div>
     <div style="display:flex;gap:8px;flex-wrap:wrap">
       <button id="logout" class="nur-supabase" title="Abmelden">Abmelden</button>
       <button id="refresh">Aktualisieren</button>
-      <button class="primary" id="edit"><span class="only-d">Positionen bearbeiten</span><span class="only-m">Bearbeiten</span></button>
+      <button class="primary nur-echt" id="edit"><span class="only-d">Positionen bearbeiten</span><span class="only-m">Bearbeiten</span></button>
     </div>
   </header>
+  <nav class="ansicht nur-supabase" aria-label="Ansicht">
+    <button data-v="echt" class="on">Mein Depot</button><button data-v="spiel">Spieldepot</button>
+  </nav>
+  <div id="v-echt">
   <div class="offline" id="offline">Keine Verbindung zum Server – angezeigt wird der letzte gespeicherte Stand.</div>
 
   <section class="kpis">
@@ -253,11 +299,106 @@ body.supabase .nur-lokal{display:none !important}
       <div id="a-log" class="alog"></div>
     </div>
   </section>
+  </div><!-- /v-echt -->
+
+  <!-- ---------- Spieldepot (Paper-Trading, nur online) ---------- -->
+  <div id="v-spiel" class="nur-supabase">
+    <section class="card" id="s-leer" hidden>
+      <h2>Spieldepot anlegen</h2>
+      <p class="meta" style="margin-top:0">Mit Spielgeld handeln und Regeln ausprobieren – ohne echtes Geld, ohne echte Orders.</p>
+      <form id="s-anlegen" class="aform">
+        <label class="meta">Name <input id="s-name" value="Spieldepot" maxlength="60"></label>
+        <label class="meta">Startkapital € <input id="s-kapital" value="25000" inputmode="decimal" style="width:110px"></label>
+        <label class="meta">Gebühr je Order € <input id="s-gebuehr" value="1" inputmode="decimal" style="width:70px"></label>
+        <button class="primary" type="submit">Anlegen</button>
+      </form>
+    </section>
+
+    <div id="s-inhalt" hidden>
+      <div class="sbar">
+        <select id="s-depot" aria-label="Spieldepot wählen"></select>
+        <span class="meta" id="s-stamp"></span>
+        <button id="s-neu" title="Weiteres Spieldepot anlegen">+ Spieldepot</button>
+      </div>
+      <section class="kpis">
+        <div class="card kpi"><div class="label">Gesamtwert</div><div class="val" id="s-total">–</div><div class="sub" id="s-start"></div></div>
+        <div class="card kpi"><div class="label">Spielgeld frei</div><div class="val" id="s-bar">–</div><div class="sub" id="s-gebinfo"></div></div>
+        <div class="card kpi"><div class="label">Gewinn / Verlust seit Start</div><div class="val" id="s-pl">–</div><div class="sub" id="s-plpct"></div></div>
+        <div class="card kpi"><div class="label">Orders</div><div class="val" id="s-anz">–</div><div class="sub" id="s-anzinfo"></div></div>
+      </section>
+
+      <section class="grid">
+        <div class="card">
+          <h2>Wertverlauf <span class="meta">(ein Wert pro Tag, ab 17:40)</span></h2>
+          <div class="chartbox"><canvas id="s-chart"></canvas></div>
+          <div class="meta" id="s-chartinfo"></div>
+        </div>
+        <div class="card">
+          <h2>Order aufgeben</h2>
+          <form id="s-order" class="sform">
+            <label>ISIN / Ticker<input id="s-kennung" list="s-liste" placeholder="z. B. EUNL.DE" required autocomplete="off"></label>
+            <datalist id="s-liste"></datalist>
+            <div class="seg" role="group" aria-label="Kaufen oder Verkaufen">
+              <label><input type="radio" name="s-seite" value="kauf" checked> Kaufen</label>
+              <label><input type="radio" name="s-seite" value="verkauf"> Verkaufen</label>
+            </div>
+            <label>Betrag €<input id="s-betrag" inputmode="decimal" placeholder="z. B. 1000"></label>
+            <label class="nur-verkauf"><input type="checkbox" id="s-alles"> Alles verkaufen</label>
+            <button class="primary" type="submit" id="s-senden">Order ausführen</button>
+            <div class="meta" id="s-orderinfo">Ausgeführt zum aktuellen Kurs (teils verzögert), zzgl. Gebühr.</div>
+          </form>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2>Positionen im Spieldepot</h2>
+        <div class="tablewrap"><table id="s-tbl"><thead><tr><th class="l">Position</th><th>Anteile</th><th>Einstand</th><th>Kurs</th><th>Wert</th><th>Heute</th><th>G/V</th></tr></thead><tbody></tbody></table></div>
+      </section>
+
+      <section class="grid" style="margin-top:16px">
+        <div class="card">
+          <h2>Regeln <span class="meta">· laufen werktags ab 17:40 automatisch</span></h2>
+          <div id="s-regeln"></div>
+          <form id="s-regelform" class="sform" style="margin-top:12px">
+            <label>Neue Regel
+              <select id="s-typ">
+                <option value="sparplan">Sparplan – fester Betrag jeden Monat</option>
+                <option value="nachkauf">Nachkaufen bei Rückgang</option>
+                <option value="trend">Trendfolge – gleitender Durchschnitt</option>
+                <option value="rebalancing">Rebalancing auf Zielgewichte</option>
+              </select>
+            </label>
+            <div id="s-felder" class="sfelder"></div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap">
+              <button type="button" id="s-bt">Backtest (1 Jahr)</button>
+              <button class="primary" type="submit">+ Regel</button>
+            </div>
+          </form>
+        </div>
+        <div class="card">
+          <h2>Letzte Orders</h2>
+          <div id="s-orders" class="alog"></div>
+        </div>
+      </section>
+      <div class="foot">Spielgeld – es werden keine echten Orders ausgeführt. Regeln sind technische Bausteine zum Ausprobieren, keine Anlageempfehlung.
+        <button id="s-loeschen" class="linkbtn">Dieses Spieldepot löschen</button></div>
+    </div>
+  </div><!-- /v-spiel -->
 
   <div class="foot">Kurse von Yahoo Finance, teils verzögert, ohne Gewähr. Fremdwährungen in EUR umgerechnet.
     <span class="nur-lokal">Alle Daten bleiben auf deinem Rechner.</span>
     <span class="nur-supabase">Daten liegen in deinem Supabase-Projekt, nur für dein Konto lesbar.</span></div>
 </div>
+
+<dialog id="btdlg">
+  <div class="khead">
+    <div><h2 id="bt-titel" style="margin:0;font-size:17px">Backtest</h2><div class="meta" id="bt-sub"></div></div>
+    <button id="bt-zu" aria-label="Schließen">✕</button>
+  </div>
+  <div class="chartbox"><canvas id="bt-chart"></canvas></div>
+  <div class="kstats" id="bt-stats"></div>
+  <div class="meta" id="bt-hinweis" style="margin-top:10px"></div>
+</dialog>
 
 <dialog id="kdlg">
   <div class="khead">
@@ -271,6 +412,13 @@ body.supabase .nur-lokal{display:none !important}
   <div class="tabs" id="k-ranges"></div>
   <div class="chartbox"><canvas id="k-chart"></canvas></div>
   <div class="kstats" id="k-stats"></div>
+  <div class="krech">
+    <div class="krech-kopf">
+      <h3>Nachrichten</h3>
+      <button id="k-claude" title="Öffnet claude.ai mit einer fertigen Frage (nutzt dein Claude-Abo, keine API-Kosten)">In Claude nachfragen ↗</button>
+    </div>
+    <div id="k-rech" class="meta">Automatische Recherchen erscheinen hier, wenn ein Tagesbewegungs-Alert auslöst.</div>
+  </div>
   <div class="meta" style="margin-top:10px">Tagesschlusskurse in EUR. Gestrichelt: dein Einstandskurs (Einstand ÷ Anteile), wenn er im angezeigten Bereich liegt.</div>
 </dialog>
 
@@ -448,7 +596,7 @@ function zeigeVerlauf(i){ kIndex=i; renderVerlauf(); if(!kdlg.open) kdlg.showMod
 document.getElementById('k-zu').onclick=()=>kdlg.close();
 kdlg.addEventListener('click',e=>{ if(e.target===kdlg) kdlg.close(); });   // Klick neben den Dialog schließt
 // Das close-Ereignis kommt verzögert – nur aufräumen, wenn der Dialog inzwischen nicht wieder geöffnet wurde
-kdlg.addEventListener('close',()=>{ if(kdlg.open) return; kIndex=null; if(kChart){kChart.destroy(); kChart=null;} });
+kdlg.addEventListener('close',()=>{ if(kdlg.open) return; kIndex=null; rechFuer=null; if(kChart){kChart.destroy(); kChart=null;} });
 
 function renderVerlauf(){
   const p=data?.positions?.[kIndex];
@@ -498,7 +646,39 @@ function renderVerlauf(){
   }
   if(!werte.length) st.unshift(box('Kursverlauf','keine Daten'));
   document.getElementById('k-stats').innerHTML=st.join('');
+  rechercheZeigen(p);
 }
+
+// ---- Recherche: automatische Ergebnisse (online) und Frage an claude.ai (immer) ----
+let rechFuer=null;
+async function rechercheZeigen(p){
+  const ziel=document.getElementById('k-rech');
+  if(API.modus!=='supabase'){ ziel.textContent='Automatische Recherchen gibt es in der Online-Fassung.'; return; }
+  if(rechFuer===p.id) return;            // bei minütlicher Aktualisierung nicht neu laden
+  rechFuer=p.id;
+  const { data, error } = await sb.from('recherchen').select('zeit, status, modell, inhalt, kosten_usd, anlass')
+    .eq('kennung', p.id).order('zeit',{ascending:false}).limit(1);
+  if(kIndex===null || data===null && error){ return; }
+  const r=data?.[0];
+  if(!r){ ziel.innerHTML='Noch keine automatische Recherche. Sie startet, wenn ein Tagesbewegungs-Alert für diese Position auslöst.'; return; }
+  const wann=new Date(r.zeit).toLocaleString('de-DE',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'});
+  const i=r.inhalt||{};
+  if(r.status==='offen'){ ziel.innerHTML=`<i>Recherche läuft …</i> (${esc(r.anlass)}, ${wann})`; return; }
+  if(r.status==='fehler'||r.status==='uebersprungen'){ ziel.innerHTML=`Recherche vom ${wann} nicht möglich: ${esc(i.fehler||r.status)}`; return; }
+  const sichere=(u)=>/^https?:\/\//i.test(u)?u:'#';
+  ziel.innerHTML=`<div class="kurz">${esc(i.kurzfassung)}</div>
+    ${i.gruende?.length?`<ul>${i.gruende.map(g=>`<li>${esc(g)}</li>`).join('')}</ul>`:''}
+    ${i.quellen?.length?`<div class="quellen">${i.quellen.map(q=>`<a href="${esc(sichere(q.url))}" target="_blank" rel="noopener noreferrer">${esc(q.titel||q.url)}</a>`).join('')}</div>`:''}
+    <div class="meta" style="margin-top:6px">${r.status==='demo'?'Demo-Modus – '+esc(i.demo_hinweis||''):
+      `${esc(r.anlass)} · ${wann} · ${i.sicherheit==='unklar'?'Grund unklar · ':''}Kosten ${num(Number(r.kosten_usd)/1.10,2)} € · automatisch erstellt, keine Anlageempfehlung`}</div>`;
+}
+document.getElementById('k-claude').onclick=async()=>{
+  const p=data?.positions?.[kIndex]; if(!p) return;
+  const frage=`Warum hat sich ${p.name||p.id} (${p.symbol||p.id}${p.id!==p.symbol?', '+p.id:''}) heute um ${pct(p.day_pct)} bewegt? `+
+    `Suche aktuelle Nachrichten der letzten Tage und fasse sie kurz auf Deutsch zusammen: mögliche Gründe, mit Quellen. Keine Kaufempfehlung.`;
+  try{ await navigator.clipboard.writeText(frage); }catch(e){}
+  window.open('https://claude.ai/new?q='+encodeURIComponent(frage),'_blank','noopener');
+};
 
 // ---- Bearbeiten ----
 const dlg=document.getElementById('dlg'); let original=[];
@@ -626,5 +806,6 @@ if(API.modus==='supabase'){
   starten();
 }
 </script>
+<script src="spiel.js"></script>
 </body>
 </html>

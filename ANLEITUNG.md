@@ -21,6 +21,12 @@ Alles im kostenlosen Tarif.
 2. **Push-Schlüssel hinterlegen:** Edge Functions → **Secrets** → Add new secret:
    Name `VAPID_PRIVATE_KEY`, Wert aus `.secrets/supabase-geheimnisse.txt` (nur auf deinem Mac).
 
+## Optional: echte Recherchen statt Demo-Modus
+1. Auf https://platform.claude.com einen API-Schlüssel anlegen und etwas Guthaben aufladen
+   (getrennt vom Claude-Abo; geschätzt 0,15–0,25 € je Recherche, gedeckelt auf 5 € im Monat).
+2. Supabase → Edge Functions → **Secrets** → Name `ANTHROPIC_API_KEY`, Wert = der Schlüssel.
+   Ab dem nächsten Tagesbewegungs-Alert recherchiert Claude automatisch.
+
 ## Danach (macht Claude)
 - Positionen aus der lokalen `holdings.json` in die Datenbank übertragen
 - Repo öffentlich schalten und GitHub Pages aktivieren
