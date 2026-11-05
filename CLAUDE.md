@@ -71,6 +71,10 @@ und Alerts. Später: als App auf Mac und Android (PWA), Server im Dauerbetrieb, 
 - `sw.js`: „Netz zuerst, sonst Cache“ für Seite, Symbole, Chart.js und `/api/portfolio` + `/api/alerts`
   (Offline-Fallback mit Kopfzeile `X-Offline: 1` → Hinweisbalken). Andere API-Aufrufe nie aus dem Cache.
   Bei größeren Änderungen `CACHE` in `sw.js` hochzählen.
+- **Updates in der installierten App:** GitHub Pages sendet `cache-control: max-age=600`. Der Service Worker holt
+  eigene Dateien deshalb mit `cache: 'no-cache'` (Nachfrage per ETag). Die Seite ruft beim Zurückkehren in die
+  App `reg.update()` auf und lädt sich bei `controllerchange` einmal neu – die App hat keinen Neu-laden-Knopf.
+  Neue Version ausliefern = `CACHE` hochzählen.
 - `server.py` liefert nur Dateien aus der festen Liste `STATIC` aus – nie beliebige Pfade
   (sonst wären `holdings.json`/`alerts.json` abrufbar).
 - Handy-Layout (≤ 640 px): Positionen als Karten (`data-label` an jeder Zelle), Sortierung per Auswahlliste,
