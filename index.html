@@ -161,6 +161,16 @@ tr.klick:hover td{background:var(--chip)}
   .kstats{grid-template-columns:1fr 1fr}
 }
 
+/* ---------- Einstellungen ---------- */
+button.icon{font-size:17px;line-height:1;padding:6px 10px}
+#edlg{width:min(640px,calc(100vw - 32px))}
+#edlg input[type=checkbox]{width:auto;padding:0;border:none;background:none;flex:none}   /* nicht von „dialog input“ strecken lassen */
+#edlg .aform input{width:110px}
+.esek{border-top:1px solid var(--line);padding-top:12px}
+.esek h3{font-size:15px}
+.linkbtn2{border:none;background:none;color:var(--accent);padding:0;font-size:13px;cursor:pointer}
+@media (max-width:640px){ #edlg{width:100vw} }
+
 /* ---------- Ansicht Depot / Spieldepot ---------- */
 .ansicht{display:flex;gap:4px;background:var(--chip);border-radius:10px;padding:4px;margin:-6px 0 16px;width:max-content;max-width:100%}
 .ansicht button{border:none;background:transparent;padding:6px 14px;border-radius:7px}
@@ -230,6 +240,7 @@ body.supabase .nur-lokal{display:none !important}
       <div class="meta nur-echt" id="stamp">Lade Kurse …</div>
     </div>
     <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <button id="einst" class="icon" title="Einstellungen" aria-label="Einstellungen">⚙</button>
       <button id="logout" class="nur-supabase" title="Abmelden">Abmelden</button>
       <button id="refresh">Aktualisieren</button>
       <button class="primary nur-echt" id="edit"><span class="only-d">Positionen bearbeiten</span><span class="only-m">Bearbeiten</span></button>
@@ -266,38 +277,12 @@ body.supabase .nur-lokal{display:none !important}
     <div class="tablewrap"><table id="tbl"><thead></thead><tbody></tbody></table></div>
   </section>
 
-  <section class="grid" style="margin-top:16px">
-    <div class="card">
-      <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:12px">
-        <h2 style="margin:0">Alerts
-          <span class="meta nur-lokal">· Mac-Mitteilung, geprüft jede Minute solange der Server läuft</span>
-          <span class="meta nur-supabase">· Push-Mitteilung, geprüft alle 5 Minuten</span></h2>
-        <button id="a-test">Test-Mitteilung</button>
-      </div>
-      <div class="pushzeile nur-supabase" style="margin:0 0 10px">
-        <span>Auf diesem Gerät: <b id="p-status">…</b></span>
-        <button id="p-an">Push aktivieren</button>
-        <button id="p-aus">Ausschalten</button>
-      </div>
-      <div id="a-rules"></div>
-      <form id="a-form" class="aform">
-        <select id="a-type">
-          <option value="day_move">Tagesbewegung ±</option>
-          <option value="price_below">Kurs fällt unter</option>
-          <option value="price_above">Kurs steigt über</option>
-          <option value="pl_below">Verlust seit Kauf ab</option>
-          <option value="portfolio_day_move">Portfolio-Tagesbewegung ±</option>
-        </select>
-        <select id="a-target"></select>
-        <input id="a-value" inputmode="decimal" placeholder="Wert" required style="width:100px">
-        <span id="a-unit" class="meta">%</span>
-        <button class="primary" type="submit">+ Alert</button>
-      </form>
+  <section class="card" style="margin-top:16px">
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px">
+      <h2 style="margin:0">Ausgelöste Alerts</h2>
+      <button class="linkbtn2" id="einst-alerts" type="button">Alerts einrichten ⚙</button>
     </div>
-    <div class="card">
-      <h2>Ausgelöst</h2>
-      <div id="a-log" class="alog"></div>
-    </div>
+    <div id="a-log" class="alog"></div>
   </section>
   </div><!-- /v-echt -->
 
@@ -389,6 +374,40 @@ body.supabase .nur-lokal{display:none !important}
     <span class="nur-lokal">Alle Daten bleiben auf deinem Rechner.</span>
     <span class="nur-supabase">Daten liegen in deinem Supabase-Projekt, nur für dein Konto lesbar.</span></div>
 </div>
+
+<dialog id="edlg">
+  <div class="khead">
+    <h2 style="margin:0;font-size:17px">Einstellungen</h2>
+    <button id="e-zu" aria-label="Schließen">✕</button>
+  </div>
+  <section class="esek">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:12px">
+        <h3 style="margin:0">Alerts
+          <span class="meta nur-lokal">· Mac-Mitteilung, geprüft jede Minute solange der Server läuft</span>
+          <span class="meta nur-supabase">· Push-Mitteilung, geprüft alle 5 Minuten</span></h3>
+        <button id="a-test">Test-Mitteilung</button>
+      </div>
+      <div class="pushzeile nur-supabase" style="margin:0 0 10px">
+        <span>Auf diesem Gerät: <b id="p-status">…</b></span>
+        <button id="p-an">Push aktivieren</button>
+        <button id="p-aus">Ausschalten</button>
+      </div>
+      <div id="a-rules"></div>
+      <form id="a-form" class="aform">
+        <select id="a-type">
+          <option value="day_move">Tagesbewegung ±</option>
+          <option value="price_below">Kurs fällt unter</option>
+          <option value="price_above">Kurs steigt über</option>
+          <option value="pl_below">Verlust seit Kauf ab</option>
+          <option value="portfolio_day_move">Portfolio-Tagesbewegung ±</option>
+        </select>
+        <select id="a-target"></select>
+        <input id="a-value" inputmode="decimal" placeholder="Wert" required style="width:100px">
+        <span id="a-unit" class="meta">%</span>
+        <button class="primary" type="submit">+ Alert</button>
+      </form>
+  </section>
+</dialog>
 
 <dialog id="btdlg">
   <div class="khead">
@@ -771,6 +790,14 @@ async function pushAnzeigen(){
 }
 document.getElementById('p-an').onclick=async()=>{ try{ await pushAktivieren(); }catch(e){ alert(e.message); } pushAnzeigen(); };
 document.getElementById('p-aus').onclick=async()=>{ try{ await pushAbmelden(); }catch(e){ alert(e.message); } pushAnzeigen(); };
+
+// ---- Einstellungen (Alerts einrichten) ----
+const edlg=document.getElementById('edlg');
+const einstOeffnen=()=>{ fillTargets(); pushAnzeigen(); edlg.showModal(); };
+document.getElementById('einst').onclick=einstOeffnen;
+document.getElementById('einst-alerts').onclick=einstOeffnen;
+document.getElementById('e-zu').onclick=()=>edlg.close();
+edlg.addEventListener('click',e=>{ if(e.target===edlg) edlg.close(); });
 
 document.getElementById('refresh').onclick=load;
 const _render=render; render=function(){_render(); fillTargets(); loadAlerts(); if(kdlg.open) renderVerlauf();};

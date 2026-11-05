@@ -27,6 +27,8 @@ und Alerts. Später: als App auf Mac und Android (PWA), Server im Dauerbetrieb, 
 - Beide liefern dieselben Formate (Position `{uid?, name, id, depot, anteile, einstand, symbol}`,
   Regel `{id?, type, target, value, enabled}`), damit `index.html` nur eine Fassung braucht.
 - CSS-Klassen `nur-lokal` / `nur-supabase`; `body.supabase`, `body.abgemeldet` steuern die Anzeige.
+- Einrichtung der Alerts (Regeln, neuer Alert, Push-Schalter, Test) liegt im Dialog `#edlg` hinter dem
+  Zahnrad ⚙ in der Kopfzeile; auf der Seite stehen nur die ausgelösten Alerts. IDs (`a-rules`, `a-form`, …) unverändert.
 - Letzter Stand liegt zusätzlich in `localStorage` (`dd.letzterStand`) für den Offline-Start; Abmelden löscht ihn.
 
 ## Supabase
