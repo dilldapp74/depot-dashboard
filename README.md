@@ -1,6 +1,6 @@
 # Depot-Dashboard
 
-Lokales Dashboard für alle Depots (ING, Trade Republic) mit Live-Kursen, Gewinn/Verlust,
+Lokales Dashboard für alle Depots mit Live-Kursen, Gewinn/Verlust,
 Aufteilung, Wertverlauf und Kurs-Alerts als Mac-Mitteilung.
 
 Die Positionen werden von Hand gepflegt – kein Broker-Zugang, keine Exporte nötig.
