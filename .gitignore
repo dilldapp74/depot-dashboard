@@ -21,3 +21,6 @@ __pycache__/
 
 # Lokale Geheimnisse (VAPID-Privatschlüssel, Cron-Geheimnis) – nur zum Eintragen in Supabase
 .secrets/
+
+# Zwischengespeicherte Kursdaten und Backtest-Ergebnisse
+.cache/

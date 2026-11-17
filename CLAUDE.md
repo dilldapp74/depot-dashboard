@@ -53,6 +53,16 @@ und Alerts. Später: als App auf Mac und Android (PWA), Server im Dauerbetrieb, 
 - Bestand und Einstand werden aus den Orders berechnet (Durchschnittskosten inkl. Gebühren).
 - Eingabefehler als `Hinweis` → HTTP 400, sonst 500.
 
+## Handelsautomat (in Arbeit: supabase/functions/depot/handel.ts, universum.ts)
+- `handel.ts` ist reine Rechenlogik ohne Abhängigkeiten: Gebühren/Spread, FIFO-Lose, Steuern (Abgeltung inkl.
+  Soli, Aktien- und allgemeiner Verlusttopf, Erstattung im Jahr, ETF-Teilfreistellung, Krypto-Haltefrist,
+  Freigrenze, Rücklage + Jahresabrechnung), Strategie (Momentum, Trend-/Marktfilter, Stop-Loss, Krypto-Bremse)
+  und Backtest. **Live und Backtest nutzen dieselben Funktionen** – Änderungen immer dort, nie doppelt.
+- `universum.ts`: Werte nach fester Regel (DAX 40 + Nasdaq 100 + 5 ETFs + 9 Krypto) – keine handverlesenen
+  Gewinner, die schönen den Backtest (Rückschaufehler).
+- Tests: `node --test tests/` (Node ≥ 22.18 führt .ts direkt aus; Importe mit Endung `.ts`), läuft auch auf GitHub.
+- Backtest lokal: `node scripts/backtest.ts [Jahre] [Startkapital]` (Kurse in `.cache/`, gitignored).
+
 ## Recherche (supabase/recherche.sql)
 - Tagesbewegungs-Alert → Auftrag in `recherchen` (einmal je Position und Tag). Der Cron arbeitet höchstens
   einen Auftrag je Lauf ab, im Hintergrund über `EdgeRuntime.waitUntil` (pg_net wartet nur 30 s).
