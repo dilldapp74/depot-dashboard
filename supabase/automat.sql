@@ -101,3 +101,36 @@ grant execute on function public.bot_buchen(uuid, text, text, text, text, text, 
   numeric, jsonb, numeric, text) to service_role;
 revoke execute on function public.bot_steuer_abrechnen(uuid, numeric, jsonb) from public, anon, authenticated;
 grant execute on function public.bot_steuer_abrechnen(uuid, numeric, jsonb) to service_role;
+
+-- ---------- Phase 4: Claude prüft jeden neuen Kauf ----------
+-- Die Umschichtung legt für jeden neuen Wert eine Prüfung an (einmal je Woche und Wert). Der Cron arbeitet
+-- je Lauf höchstens eine ab und setzt danach "nachlauf", damit der Automat am selben Tag noch einmal läuft
+-- und freigegebene Käufe ausführt. Abgelehnte Werte bleiben für den Rest der Woche gesperrt.
+-- Status: offen | frei | abgelehnt | demo (ohne API-Schlüssel) | ohne (Grenze erreicht) | fehler | verfallen
+
+alter table public.spieldepots add column if not exists nachlauf boolean not null default false;
+
+create table if not exists public.bot_pruefungen (
+  id          bigint generated always as identity primary key,
+  depot_id    uuid not null references public.spieldepots (id) on delete cascade,
+  user_id     uuid not null references auth.users (id) on delete cascade,
+  woche       text not null,            -- Montag der Woche
+  kennung     text not null,
+  name        text not null default '',
+  klasse      text not null default '',
+  grund       text not null default '',  -- Kaufgrund der Strategie
+  status      text not null default 'offen',
+  urteil      jsonb not null default '{}',
+  modell      text not null default '',
+  kosten_usd  numeric not null default 0,
+  zeit        timestamptz not null default now(),
+  erledigt    timestamptz,
+  unique (depot_id, woche, kennung)
+);
+create index if not exists bot_pruefungen_offen on public.bot_pruefungen (status, zeit);
+alter table public.bot_pruefungen enable row level security;
+drop policy if exists "eigene Prüfungen lesen" on public.bot_pruefungen;
+create policy "eigene Prüfungen lesen" on public.bot_pruefungen for select to authenticated
+  using (user_id = (select auth.uid()));
+revoke all on public.bot_pruefungen from anon, authenticated;
+grant select on public.bot_pruefungen to authenticated;

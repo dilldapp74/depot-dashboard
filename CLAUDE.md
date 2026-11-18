@@ -62,6 +62,13 @@ und Alerts. Später: als App auf Mac und Android (PWA), Server im Dauerbetrieb, 
   Gewinner, die schönen den Backtest (Rückschaufehler).
 - Tests: `node --test tests/` (Node ≥ 22.18 führt .ts direkt aus; Importe mit Endung `.ts`), läuft auch auf GitHub.
 - Backtest lokal: `node scripts/backtest.ts [Jahre] [Startkapital]` (Kurse in `.cache/`, gitignored).
+- Live (`supabase/automat.sql`, `index.ts` → `botLauf`): Bot-Depot `art = 'bot'`, Cron ab 16:00 Berlin (werktags bis 17:25),
+  ein Lauf je Tag, Umschichtung gilt erst als erledigt, wenn 4 Plätze besetzt sind. Orders nur über `bot_buchen()`,
+  Protokoll in `bot_protokoll`. Kurz anhalten: `update spieldepots set pausiert = true where art = 'bot'`.
+- Kaufprüfung (Phase 4): neue Werte → `bot_pruefungen` (`offen`), der Cron prüft eine je Lauf mit Claude (`claudeFragen()`,
+  gemeinsam mit der Recherche), danach `nachlauf = true` → zweiter Lauf am selben Tag kauft. Veto = Wert bis Wochenende gesperrt,
+  der nächste rückt nach. Ohne API-Schlüssel `demo` (sofort frei); Fehler/Grenze (8 je Tag, 5 €/Monat) → Kauf ohne Prüfung.
+  Aufstocken und Verkäufe werden nie geprüft.
 
 ## Recherche (supabase/recherche.sql)
 - Tagesbewegungs-Alert → Auftrag in `recherchen` (einmal je Position und Tag). Der Cron arbeitet höchstens
