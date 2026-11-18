@@ -60,7 +60,7 @@ und Alerts. Später: als App auf Mac und Android (PWA), Server im Dauerbetrieb, 
   und Backtest. **Live und Backtest nutzen dieselben Funktionen** – Änderungen immer dort, nie doppelt.
 - `universum.ts`: Werte nach fester Regel (DAX 40 + Nasdaq 100 + 5 ETFs + 9 Krypto) – keine handverlesenen
   Gewinner, die schönen den Backtest (Rückschaufehler).
-- Tests: `node --test tests/` (Node ≥ 22.18 führt .ts direkt aus; Importe mit Endung `.ts`), läuft auch auf GitHub.
+- Tests: `node --test "tests/*.test.ts"` (Node ≥ 22.18 führt .ts direkt aus; Importe mit Endung `.ts`), läuft auch auf GitHub.
 - Backtest lokal: `node scripts/backtest.ts [Jahre] [Startkapital]` (Kurse in `.cache/`, gitignored).
 - Live (`supabase/automat.sql`, `index.ts` → `botLauf`): Bot-Depot `art = 'bot'`, Cron ab 16:00 Berlin (werktags bis 17:25),
   ein Lauf je Tag, Umschichtung gilt erst als erledigt, wenn 4 Plätze besetzt sind. Orders nur über `bot_buchen()`,
