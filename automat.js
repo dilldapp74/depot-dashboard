@@ -1,6 +1,6 @@
 // Handelsautomat – Anzeige des Automat-Depots (nur Online-Fassung mit Supabase).
 // Gehandelt wird ausschließlich in der Edge Function (Cron); hier wird nur angezeigt und angehalten/fortgesetzt.
-// Nutzt die Hilfsfunktionen aus index.html (eur, pct, signed, cls, qty, priceFmt, esc, css).
+// Nutzt die Hilfsfunktionen aus index.html (eur, num, pct, signed, cls, qty, priceFmt, esc, css).
 
 (function () {
   if (API.modus !== 'supabase') return;
@@ -88,7 +88,83 @@
         <div class="s">${zeit(o.zeit)} · ${esc(o.grund || '')}</div></div>`).join('')
       : '<div class="meta">Noch keine Orders.</div>';
 
+    warum();
     kurve();
+  }
+
+  // „Warum diese Werte?“ – die letzte Wochen-Umschichtung für Laien erklärt (Daten aus dem Protokolleintrag des Laufs)
+  const ERGEBNIS = {
+    gekauft: '✓ gekauft', depot: '✓ bleibt im Depot',
+    pruefung: '… wartet auf den Nachrichten-Check durch Claude',
+    markt: '– nicht gekauft: Markt-Ampel für diesen Bereich steht auf Rot',
+    trend: '– nicht gekauft: Kurs liegt unter seinem Durchschnitt (fällt gerade)',
+    gesperrt: '– nicht gekauft: vorübergehend gesperrt (Veto von Claude oder kurz nach einem Stop-Loss)',
+    voll: '– nicht gekauft: alle Plätze waren schon besetzt',
+  };
+  const p1 = v => (v >= 0 ? '+' : '') + num(v * 100, 1) + ' %';
+  const ruhe = v => v < 0.25 ? 'ruhig' : v < 0.45 ? 'mittel' : 'stark';
+
+  function warum() {
+    const b = bot.begruendung;
+    $('b-warum').hidden = !b?.rangliste?.length;
+    if (!b?.rangliste?.length) return;
+    const tag = String(b.zeit).slice(0, 10), datum = new Date(b.zeit).toLocaleDateString('de-DE');
+    const anzahl = b.anzahl || 4, trendTage = b.trend_tage || 100, marktTage = b.markt_tage || 200;
+    const imDepot = new Set(bot.positionen.map(p => p.kennung));
+    const heuteGekauft = new Set(bot.orders.filter(o => o.seite === 'kauf' && String(o.zeit).slice(0, 10) === tag).map(o => o.kennung));
+    // ältere Einträge haben noch kein `ergebnis` → aus dem heutigen Bestand ableiten
+    const erg = r => {
+      const e = r.ergebnis || (imDepot.has(r.kennung) ? 'depot' : !r.trend ? 'trend' : 'voll');
+      return e === 'depot' && heuteGekauft.has(r.kennung) ? 'gekauft' : e;
+    };
+    const zeilen = b.rangliste.map((r, i) => ({ ...r, platz: i + 1, erg: erg(r) }));
+
+    $('b-warum-stand').textContent = `· Umschichtung vom ${datum}`;
+    $('b-warum-intro').innerHTML = `Einmal pro Woche vergleicht der Automat ${b.verglichen ? `<b>${b.verglichen} Werte</b>` : 'alle Werte'}
+      aus DAX 40, Nasdaq 100, 5 ETFs und 9 Kryptowährungen nach festen Regeln – ohne Bauchgefühl und ohne Tipps.
+      Er kauft die <b>${anzahl} Werte mit den meisten Punkten</b>, die alle Prüfungen bestehen, jeweils
+      ${anzahl === 4 ? 'für ein Viertel' : `für ${Math.round(100 / anzahl)} %`} des Geldes, damit kein einzelner Wert zu viel Gewicht hat.`;
+
+    const ampel = ok => ok ? '🟢 grün' : '🔴 rot';
+    const lage = (x, ok) => x == null ? (ok ? 'über' : 'unter') : `${num(Math.abs(x) * 100, 1)} % ${x > 0 ? 'über' : 'unter'}`;
+    const f = b.filter || {}, m = b.markt || {};
+    $('b-warum-schritte').innerHTML = [
+      `<b>Markt-Ampel:</b> Aktien ${ampel(f.aktie)} – der Weltaktien-Index (MSCI World) liegt ${lage(m.aktie, f.aktie)} seinem Durchschnitt
+        der letzten ${marktTage} Tage. Krypto ${ampel(f.krypto)} – Bitcoin liegt ${lage(m.krypto, f.krypto)} seinem Durchschnitt.
+        Bei Rot kauft der Automat in diesem Bereich nichts Neues, denn ein fallender Gesamtmarkt zieht meist auch gute Einzelwerte mit nach unten.`,
+      `<b>Punkte vergeben:</b> Für jeden Wert zählt, wie stark der Kurs in den letzten 3 und 6 Monaten gestiegen ist (Mittelwert aus beiden).
+        Das wird durch die <i>Schwankung</i> geteilt: Ein ruhiger, gleichmäßiger Anstieg bekommt mehr Punkte als ein wildes Auf und Ab mit ähnlichem Ergebnis.`,
+      `<b>Trend-Check:</b> Gekauft wird nur, wenn der Kurs über seinem Durchschnitt der letzten ${trendTage} Tage liegt – der Wert also gerade nicht fällt.`,
+      `<b>Nachrichten-Check:</b> Vor jedem neuen Kauf sucht Claude nach schlechten Nachrichten (z. B. Gewinnwarnung, Übernahmeangebot, Betrug)
+        und kann ein Veto einlegen. ${bot.demo ? 'Das ist noch im <b>Demo-Modus</b> – bisher wurde jeder Kauf ohne Prüfung freigegeben.' : 'Die Ergebnisse stehen unten unter „Kaufprüfungen“.'}`,
+    ].map(t => `<li>${t}</li>`).join('');
+
+    $('b-warum-tbl').tBodies[0].innerHTML = zeilen.map(r => `<tr class="${['gekauft', 'depot'].includes(r.erg) ? 'gekauft' : ''}">
+        <td class="name"><span class="s">${r.platz}.</span> <span class="n">${esc(r.name || r.kennung)}</span> <span class="s">${esc(r.kennung)}</span></td>
+        <td data-label="3 Monate" class="${cls(r.r3)}">${p1(r.r3)}</td>
+        <td data-label="6 Monate" class="${cls(r.r6)}">${p1(r.r6)}</td>
+        <td data-label="Schwankung" class="v">${r.vol != null ? `${num(r.vol * 100, 0)} % · ${ruhe(r.vol)}` : '–'}</td>
+        <td data-label="Punkte" class="v">${r.score != null ? num(r.score, 2) : '–'}</td>
+        <td class="erg l">${esc(ERGEBNIS[r.erg] || r.erg)}</td>
+      </tr>`).join('');
+
+    // ältere Umschichtungen haben noch keine Schwankung/Punkte gespeichert → Spalten ausblenden
+    const mitVol = zeilen.some(r => r.vol != null);
+    $('b-warum-tbl').classList.toggle('ohne-vol', !mitVol);
+
+    // Beispiel: ein Wert, der stärker gestiegen ist als ein gekaufter, aber wegen größerer Schwankung dahinter liegt
+    const gekauft = zeilen.filter(r => ['gekauft', 'depot'].includes(r.erg)), mittel = r => (r.r3 + r.r6) / 2;
+    let beispiel = mitVol ? '' : 'Schwankung und Punkte je Wert werden ab der nächsten Umschichtung mitgespeichert und dann hier angezeigt.';
+    for (const a of [...gekauft].reverse()) {
+      const x = zeilen.find(r => r.platz > a.platz && !gekauft.includes(r) && r.vol != null && a.vol != null && mittel(r) > mittel(a) && r.vol > a.vol);
+      if (x) {
+        beispiel = `<b>Beispiel:</b> ${esc(x.name)} ist im Schnitt stärker gestiegen als ${esc(a.name)} (${p1(mittel(x))} gegenüber ${p1(mittel(a))}),
+          schwankt aber stärker (${num(x.vol * 100, 0)} % statt ${num(a.vol * 100, 0)} % im Jahr). Deshalb bekommt es weniger Punkte und landet auf Platz ${x.platz}.`;
+        break;
+      }
+    }
+    $('b-warum-beispiel').innerHTML = beispiel;
+    $('b-warum-beispiel').hidden = !beispiel;
   }
 
   // Wertverlauf des Automaten (ein Wert pro Tag + heutiger Stand) gegen MSCI World und Bitcoin

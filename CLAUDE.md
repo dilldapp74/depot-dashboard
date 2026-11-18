@@ -72,6 +72,10 @@ und Alerts. Später: als App auf Mac und Android (PWA), Server im Dauerbetrieb, 
 - App: Reiter „Automat“ (`#v-bot`, `body.v-bot`, `automat.js`) zeigt das Bot-Depot über `bot_status` (Kennzahlen, Kosten, Steuern,
   Verlauf gegen MSCI World/Bitcoin, Protokoll, Prüfungen, Orders) und hat den Not-Aus (`pausiert`). Das Bot-Depot erscheint
   nicht in der Auswahl der normalen Spieldepots (`sim_status` filtert `art = 'bot'`).
+- Begründung „Warum diese Werte?“: Der Umschichtungs-Eintrag (`art = 'lauf'`) speichert in `daten` Markt-Ampel (`markt` = Abstand zum
+  200-Tage-Schnitt) und die besten 12 der Rangliste mit `r3`, `r6`, `vol`, `score`, `trend` und `ergebnis` (depot/markt/trend/gesperrt/
+  pruefung/voll). `bot_status` liefert den letzten als `begruendung`; `automat.js` erklärt ihn für Laien. Alte Einträge ohne diese Felder
+  werden mit „–“ angezeigt.
 - Rechenzeit: Edge Functions brechen nach ~2 s CPU ab („CPU Time exceeded“). Im Automaten keine teuren Aufrufe je Kurstag
   (z. B. kein neues `Intl.DateTimeFormat`); ein Lauf braucht ~0,8 s.
 
