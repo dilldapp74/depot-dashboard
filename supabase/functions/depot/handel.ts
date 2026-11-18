@@ -212,7 +212,16 @@ function vol(b: Bar[], i: number, n: number, jahr: number) {
 /** Rückblick in Kursbalken: Aktien handeln ~252 Tage im Jahr, Krypto 365 */
 const fenster = (k: Klasse) => k === "krypto" ? { m1: 91, m2: 182, vol: 91, jahr: 365 } : { m1: 63, m2: 126, vol: 63, jahr: 252 };
 
-export type Rang = { kennung: string; klasse: Klasse; score: number; kurs: number; trendOk: boolean; r3: number; r6: number };
+/** Abstand des Kurses zu seinem gleitenden Durchschnitt (0.05 = 5 % darüber); null = zu wenig Geschichte */
+export function abstandZumSchnitt(b: Bar[] | undefined, tag: string, n: number): number | null {
+  if (!b) return null;
+  const i = stand(b, tag);
+  return i < n ? null : b[i].kurs / sma(b, i, n) - 1;
+}
+
+// vol = Schwankung pro Jahr, trend = Abstand zum Trend-Schnitt – beides nur für die Begründung in der App
+export type Rang = { kennung: string; klasse: Klasse; score: number; kurs: number; trendOk: boolean; r3: number; r6: number;
+  vol: number; trend: number };
 
 /** Alle Werte nach Momentum ordnen (bester zuerst) */
 export function rangliste(werte: Wert[], reihen: Reihen, tag: string, st = OFFENSIV): Rang[] {
@@ -223,9 +232,10 @@ export function rangliste(werte: Wert[], reihen: Reihen, tag: string, st = OFFEN
     const i = stand(b, tag), f = fenster(w.klasse);
     if (i < Math.max(f.m2, st.trend_tage) + 1) continue;               // zu wenig Geschichte
     if (tageZwischen(b[i].tag, tag) > 6) continue;                       // kein aktueller Kurs (z. B. Delisting)
-    const r3 = ret(b, i, f.m1), r6 = ret(b, i, f.m2);
-    const score = (0.5 * r3 + 0.5 * r6) / Math.max(vol(b, i, f.vol, f.jahr), 0.05);
-    out.push({ kennung: w.kennung, klasse: w.klasse, score, kurs: b[i].kurs, trendOk: b[i].kurs > sma(b, i, st.trend_tage), r3, r6 });
+    const r3 = ret(b, i, f.m1), r6 = ret(b, i, f.m2), v = vol(b, i, f.vol, f.jahr);
+    const score = (0.5 * r3 + 0.5 * r6) / Math.max(v, 0.05);
+    const trend = b[i].kurs / sma(b, i, st.trend_tage) - 1;
+    out.push({ kennung: w.kennung, klasse: w.klasse, score, kurs: b[i].kurs, trendOk: trend > 0, r3, r6, vol: v, trend });
   }
   return out.sort((a, b) => b.score - a.score);
 }
@@ -233,10 +243,8 @@ export function rangliste(werte: Wert[], reihen: Reihen, tag: string, st = OFFEN
 /** Marktfilter: true = in dieser Klasse darf gekauft werden */
 export function marktfilter(reihen: Reihen, tag: string, st = OFFENSIV): Record<Klasse, boolean> {
   const ok = (kennung: string) => {
-    const b = reihen.get(kennung);
-    if (!b) return true;
-    const i = stand(b, tag);
-    return i < st.markt_tage ? true : b[i].kurs > sma(b, i, st.markt_tage);
+    const a = abstandZumSchnitt(reihen.get(kennung), tag, st.markt_tage);
+    return a === null || a > 0;
   };
   const aktien = ok(MARKT.aktie);
   return { aktie: aktien, etf: aktien, krypto: ok(MARKT.krypto) };
@@ -294,10 +302,11 @@ export function rotationPlanen(werte: Wert[], reihen: Reihen, tag: string, besta
   for (const k of ziele) {
     const p = bestand.find((x) => x.kennung === k), r = liste.find((x) => x.kennung === k);
     const klasse = p?.klasse ?? r!.klasse, ist = p ? wertVon(p) : 0, diff = zielBetrag - ist;
-    const platz = r ? erlaubt.indexOf(r) + 1 : 0;
+    // Platz in der vollständigen Rangliste – dieselbe Zählung wie in der Begründung in der App
+    const platz = r ? liste.indexOf(r) + 1 : 0, proz = (x: number) => (x >= 0 ? "+" : "") + (x * 100).toFixed(1).replace(".", ",") + " %";
     if (!p) {
       if (diff >= st.min_order) orders.push({ kennung: k, klasse, seite: "kauf", betrag: diff,
-        grund: `Rang ${platz} · 3 M ${(r!.r3 * 100).toFixed(1)} %, 6 M ${(r!.r6 * 100).toFixed(1)} %` });
+        grund: `Platz ${platz} der Rangliste · ${proz(r!.r3)} in 3 Monaten, ${proz(r!.r6)} in 6 Monaten` });
     } else if (Math.abs(diff) / gesamt * 100 > st.umschichten_ab && Math.abs(diff) >= st.min_order) {
       if (diff > 0) orders.push({ kennung: k, klasse, seite: "kauf", betrag: diff, grund: `aufstocken auf ${(zielBetrag / gesamt * 100).toFixed(0)} %` });
       else if (!kryptoBremse(p, kursVon(k), tag, st)) {

@@ -188,6 +188,12 @@ body.v-bot #v-echt, body.v-bot .nur-echt{display:none !important}
 .plog .e{padding:7px 0;border-bottom:1px solid var(--line);font-size:13px}
 .plog .e .s{color:var(--muted);font-size:12px}
 .plog .art{display:inline-block;min-width:64px;font-size:11px;font-weight:600;text-transform:uppercase;color:var(--muted)}
+.warum-text{font-size:13px;line-height:1.5;margin:0 0 10px}
+.warum-schritte{font-size:13px;line-height:1.5;margin:0 0 12px;padding-left:20px}
+.warum-schritte li{margin-bottom:6px}
+#b-warum-tbl tr.gekauft td{font-weight:600}
+#b-warum-tbl td.erg{white-space:normal;font-size:12px}
+#b-warum-tbl.ohne-vol .v{display:none}
 .plog .art.kauf{color:var(--pos)}.plog .art.verkauf,.plog .art.stop,.plog .art.fehler{color:var(--neg)}
 .sbar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:12px}
 .sbar select{font:inherit;padding:6px 8px;border:1px solid var(--line);border-radius:6px;background:var(--card);color:var(--text)}
@@ -210,12 +216,12 @@ body.v-bot #v-echt, body.v-bot .nur-echt{display:none !important}
   .sfelder{grid-template-columns:1fr}
   #btdlg{width:100vw}
   .sform input:not([type=radio]):not([type=checkbox]),.sform select{font-size:16px}
-  #s-tbl thead,#b-tbl thead{display:none}
-  #s-tbl tr,#b-tbl tr{display:grid;grid-template-columns:1fr 1fr;column-gap:12px;padding:10px 0;border-bottom:1px solid var(--line)}
-  #s-tbl td,#b-tbl td{display:flex;justify-content:space-between;gap:8px;border:none;padding:2px 0;white-space:normal}
-  #s-tbl td::before,#b-tbl td::before{content:attr(data-label);color:var(--muted);font-size:12px}
-  #s-tbl td.name,#b-tbl td.name{grid-column:1 / -1;display:block}
-  #s-tbl td.name::before,#b-tbl td.name::before{content:none}
+  #s-tbl thead,#b-tbl thead,#b-warum-tbl thead{display:none}
+  #s-tbl tr,#b-tbl tr,#b-warum-tbl tr{display:grid;grid-template-columns:1fr 1fr;column-gap:12px;padding:10px 0;border-bottom:1px solid var(--line)}
+  #s-tbl td,#b-tbl td,#b-warum-tbl td{display:flex;justify-content:space-between;gap:8px;border:none;padding:2px 0;white-space:normal}
+  #s-tbl td::before,#b-tbl td::before,#b-warum-tbl td::before{content:attr(data-label);color:var(--muted);font-size:12px}
+  #s-tbl td.name,#b-tbl td.name,#b-warum-tbl td.name,#b-warum-tbl td.erg{grid-column:1 / -1;display:block}
+  #s-tbl td.name::before,#b-tbl td.name::before,#b-warum-tbl td.name::before,#b-warum-tbl td.erg::before{content:none}
 }
 
 /* ---------- Anmeldung (nur Supabase-Fassung) ---------- */
@@ -408,6 +414,16 @@ body.supabase .nur-lokal{display:none !important}
       <section class="card">
         <h2>Positionen <span class="meta" id="b-bar"></span></h2>
         <div class="tablewrap"><table id="b-tbl"><thead><tr><th class="l">Position</th><th>Anteile</th><th>Einstand</th><th>Kurs</th><th>Wert</th><th>Heute</th><th>G/V</th></tr></thead><tbody></tbody></table></div>
+      </section>
+      <section class="card" id="b-warum" hidden style="margin-top:16px">
+        <h2>Warum diese Werte? <span class="meta" id="b-warum-stand"></span></h2>
+        <p class="warum-text" id="b-warum-intro"></p>
+        <ol class="warum-schritte" id="b-warum-schritte"></ol>
+        <div class="tablewrap"><table id="b-warum-tbl"><thead><tr><th class="l">Platz · Wert</th><th>3 Monate</th><th>6 Monate</th><th class="v">Schwankung</th><th class="v">Punkte</th><th class="l">Ergebnis</th></tr></thead><tbody></tbody></table></div>
+        <p class="warum-text" id="b-warum-beispiel"></p>
+        <div class="meta">Die Idee dahinter („Momentum“): Was einige Monate stetig gestiegen ist, steigt oft noch eine Weile weiter.
+          Das klappt häufig, aber nicht immer – deshalb verkauft der Automat per Stop-Loss, wenn ein Wert deutlich fällt.
+          Spielgeld, keine Anlageempfehlung.</div>
       </section>
       <section class="grid" style="margin-top:16px">
         <div class="card">

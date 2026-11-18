@@ -29,7 +29,7 @@ import webpush from "npm:web-push@3.6.7";
 import { createClient } from "npm:@supabase/supabase-js@2.110.0";
 import Anthropic from "npm:@anthropic-ai/sdk@1.5.0";
 import {
-  type Bar, type Depot, handelstag, jahreswechsel, kauflisten, type Klasse, kryptoRuecklage, marktfilter,
+  abstandZumSchnitt, type Bar, type Depot, handelstag, jahreswechsel, kauflisten, type Klasse, kryptoRuecklage, MARKT, marktfilter,
   neuesSteuerjahr, OFFENSIV, type PlanOrder, type Position as BotPosition, rangliste, type Reihen, STANDARD_EINSTELLUNGEN, type Steuerjahr,
   type Wert, wochenstart,
 } from "./handel.ts";
@@ -845,12 +845,20 @@ async function botLauf(row: any, tag: string, werktag: boolean) {
   }
 
   if (rotieren) {
-    const liste = rangliste(werte, reihen, tag, st).slice(0, 8), filter = marktfilter(reihen, tag, st);
+    // Begründung für die App: Markt-Ampel und die Spitze der Rangliste, je Wert mit dem Ergebnis dieses Laufs
+    const alle = rangliste(werte, reihen, tag, st), filter = marktfilter(reihen, tag, st);
+    const ergebnis = (r: typeof alle[number]) => dep.bestand.has(r.kennung) ? "depot"
+      : neuePruefungen.some((o) => o.kennung === r.kennung) && claude ? "pruefung"
+      : !filter[r.klasse] ? "markt" : !r.trendOk ? "trend"
+      : (dep.gesperrt.get(r.kennung) ?? "") > tag ? "gesperrt" : "voll";
     await botProtokoll(row, "lauf", `Wochen-Umschichtung: ${aus.length ? `${aus.length} Order(s)` : "keine Änderung"} · `
       + `Aktien ${filter.aktie ? "erlaubt" : "gesperrt (Marktfilter)"}, Krypto ${filter.krypto ? "erlaubt" : "gesperrt (Marktfilter)"}`
       + (fehlt.length ? ` · ohne Kurse: ${fehlt.length} Werte` : ""), {
-        rangliste: liste.map((r) => ({ kennung: r.kennung, name: namen.get(r.kennung) ?? r.kennung, r3: r.r3, r6: r.r6, trend: r.trendOk })),
-        filter, fehlt });
+        rangliste: alle.slice(0, 12).map((r) => ({ kennung: r.kennung, name: namen.get(r.kennung) ?? r.kennung, klasse: r.klasse,
+          r3: r.r3, r6: r.r6, vol: r.vol, score: r.score, trend: r.trendOk, abstand: r.trend, ergebnis: ergebnis(r) })),
+        filter, fehlt, verglichen: alle.length, anzahl: st.anzahl, trend_tage: st.trend_tage, markt_tage: st.markt_tage,
+        markt: { aktie: abstandZumSchnitt(reihen.get(MARKT.aktie), tag, st.markt_tage),
+          krypto: abstandZumSchnitt(reihen.get(MARKT.krypto), tag, st.markt_tage) } });
   } else if (!aus.length) {
     await botProtokoll(row, "lauf", `Täglicher Lauf: keine Aktion (${dep.bestand.size} Positionen, Stop-Loss geprüft)`);
   }
@@ -975,11 +983,14 @@ async function botStatus(userId: string) {
   if (!row) return { depot: null };
   const stand = await simBewerten(row.id);
   const d = stand.depot, { e } = botEinstellungen(d);
-  const [{ data: protokoll }, { data: pruefungen }, { data: tageswerte }] = await Promise.all([
+  const [{ data: protokoll }, { data: pruefungen }, { data: tageswerte }, { data: umschichtung }] = await Promise.all([
     admin.from("bot_protokoll").select("zeit, art, text").eq("depot_id", row.id).order("zeit", { ascending: false }).limit(40),
     admin.from("bot_pruefungen").select("zeit, kennung, name, status, grund, urteil, modell, kosten_usd").eq("depot_id", row.id)
       .order("zeit", { ascending: false }).limit(20),
     admin.from("sim_tageswerte").select("tag, wert").eq("depot_id", row.id).order("tag"),
+    // letzte Wochen-Umschichtung mit Rangliste → „Warum diese Werte?“
+    admin.from("bot_protokoll").select("zeit, daten").eq("depot_id", row.id).eq("art", "lauf").not("daten->rangliste", "is", null)
+      .order("zeit", { ascending: false }).limit(1).maybeSingle(),
   ]);
   const o = stand.orders;
   const summe = (f: (x: Params) => number) => o.reduce((s, x) => s + f(x), 0);
@@ -1003,7 +1014,8 @@ async function botStatus(userId: string) {
   return { depot: { id: d.id, name: d.name, startkapital: kapital, bargeld: Number(d.bargeld), erstellt: d.erstellt, pausiert: d.pausiert,
     letzter_lauf: d.letzter_lauf, letzte_rotation: d.letzte_rotation, gebuehr: Number(d.gebuehr) },
     positionen: stand.positionen, gesamt: stand.gesamt, orders: o.slice(-60).reverse(), kosten, protokoll: protokoll ?? [],
-    pruefungen: pruefungen ?? [], tageswerte: tageswerte ?? [], vergleich, demo: !claude, generated: Date.now() / 1000 };
+    pruefungen: pruefungen ?? [], tageswerte: tageswerte ?? [], vergleich, demo: !claude, generated: Date.now() / 1000,
+    begruendung: umschichtung ? { zeit: umschichtung.zeit, ...umschichtung.daten } : null };
 }
 
 // ---------------------------------------------------------------- Einstieg

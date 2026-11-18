@@ -3,7 +3,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
-  anteileVon, backtest, type Bar, freiesGeld, handelstag, jahreswechsel, kaufen, kryptoBremse, marktfilter,
+  abstandZumSchnitt, anteileVon, backtest, type Bar, freiesGeld, handelstag, jahreswechsel, kaufen, kryptoBremse, marktfilter,
   neuesDepot, OFFENSIV, rangliste, type Reihen, rotationPlanen, stand, stopFaellig, verkaufen, type Wert,
 } from "../supabase/functions/depot/handel.ts";
 
@@ -47,6 +47,24 @@ test("Rangliste: stärkster Wert zuerst, fallender Wert ohne Trend", () => {
   const f = r.find((x) => x.kennung === "FALLEND")!;
   assert.equal(f.trendOk, false);
   assert.ok(r.every((x, i) => i === 0 || r[i - 1].score >= x.score));
+});
+
+test("Rangliste: Schwankung und Trendabstand für die Begründung", () => {
+  const r = rangliste(werte, testReihen(), tagNr(400));
+  for (const x of r) {
+    assert.ok(x.vol > 0, "Schwankung pro Jahr");
+    assert.equal(x.trendOk, x.trend > 0);
+  }
+  const f = r.find((x) => x.kennung === "FALLEND")!;
+  assert.ok(f.trend < 0);
+  assert.equal(abstandZumSchnitt(undefined, tagNr(400), 200), null);
+  assert.equal(abstandZumSchnitt(testReihen().get("STARK"), tagNr(50), 200), null);   // zu wenig Geschichte
+});
+
+test("Kaufgrund nennt den Platz in der vollständigen Rangliste", () => {
+  const plan = rotationPlanen(werte, testReihen(), tagNr(400), [], 25000, new Map());
+  const kauf = plan.orders.find((o) => o.kennung === "STARK")!;
+  assert.match(kauf.grund, /^Platz 1 der Rangliste · \+\d+,\d % in 3 Monaten, \+\d+,\d % in 6 Monaten$/);
 });
 
 test("Marktfilter: fallender Weltindex sperrt Aktienkäufe, Krypto bleibt erlaubt", () => {
