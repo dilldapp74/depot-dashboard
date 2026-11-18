@@ -187,7 +187,8 @@ export type Strategie = {
 };
 
 export const OFFENSIV: Strategie = {
-  anzahl: 4, halten_bis_rang: 8, max_anteil: 35, stop: { aktie: 15, etf: 15, krypto: 20 },
+  // Stop-Loss 25/30 %: engere Stops (15/20 %) verkauften im Backtest oft kurz vor der Erholung
+  anzahl: 4, halten_bis_rang: 8, max_anteil: 35, stop: { aktie: 25, etf: 25, krypto: 30 },
   trend_tage: 100, markt_tage: 200, min_order: 200, sperre_nach_stop: 5, umschichten_ab: 10, krypto_bremse_tage: 330,
 };
 
@@ -312,6 +313,12 @@ export function rotationPlanen(werte: Wert[], reihen: Reihen, tag: string, besta
 
 // ================================================================ Ausführung und Backtest
 
+/** Montag der Woche (JJJJ-MM-TT) – Umschichtung einmal je Woche */
+export function wochenstart(tag: string): string {
+  const t = new Date(tag + "T12:00:00Z"), tagNr = (t.getUTCDay() + 6) % 7;
+  return new Date(t.getTime() - tagNr * 864e5).toISOString().slice(0, 10);
+}
+
 /** Zustand eines Depots für Ausführung und Backtest */
 export type Depot = {
   bargeld: number;
@@ -338,8 +345,10 @@ export function jahreswechsel(d: Depot, jahr: number, e = STANDARD_EINSTELLUNGEN
   return steuer;
 }
 
-export type Ausfuehrung = { kennung: string; seite: Seite; anteile: number; kurs: number; gebuehr: number;
-  spread: number; realisiert?: number; steuer?: number; grund: string };
+export type Ausfuehrung = { kennung: string; klasse: Klasse; seite: Seite; anteile: number; kurs: number; gebuehr: number;
+  spread: number; realisiert?: number; steuer?: number; grund: string;
+  sj: Steuerjahr;          // Steuerstand nach dieser Order (zum Speichern im Live-Betrieb)
+  bargeld: number };       // Bargeld nach dieser Order (zur Kontrolle beim Speichern)
 
 /** Kauf zum Mittelkurs `mittel` für höchstens `betrag` € (inkl. Gebühr). Gibt null zurück, wenn zu klein. */
 export function kaufen(d: Depot, w: { kennung: string; klasse: Klasse }, mittel: number, betrag: number, tag: string,
@@ -354,7 +363,8 @@ export function kaufen(d: Depot, w: { kennung: string; klasse: Klasse }, mittel:
   d.bestand.set(w.kennung, p);
   const spread = anteile * (kurs - mittel);
   d.summen.orders++; d.summen.gebuehren += e.gebuehr; d.summen.spread += spread;
-  return { kennung: w.kennung, seite: "kauf", anteile, kurs, gebuehr: e.gebuehr, spread, grund };
+  return { kennung: w.kennung, klasse: w.klasse, seite: "kauf", anteile, kurs, gebuehr: e.gebuehr, spread, grund,
+    sj: { ...d.sj }, bargeld: d.bargeld };
 }
 
 /** Verkauf von `anteile` zum Mittelkurs `mittel`, mit Steuer */
@@ -371,7 +381,8 @@ export function verkaufen(d: Depot, kennung: string, mittel: number, anteile: nu
   if (v.rest.length && anteileVon({ ...p, lose: v.rest }) > 1e-9) p.lose = v.rest; else d.bestand.delete(kennung);
   const spread = a * (mittel - kurs);
   d.summen.orders++; d.summen.gebuehren += e.gebuehr; d.summen.spread += spread; d.summen.abgeltung += v.steuer;
-  return { kennung, seite: "verkauf", anteile: a, kurs, gebuehr: e.gebuehr, spread, realisiert: v.realisiert, steuer: v.steuer, grund };
+  return { kennung, klasse: p.klasse, seite: "verkauf", anteile: a, kurs, gebuehr: e.gebuehr, spread, realisiert: v.realisiert,
+    steuer: v.steuer, grund, sj: { ...d.sj }, bargeld: d.bargeld };
 }
 
 /** Steuer, die beim Verkauf aller Positionen heute anfiele (für den Vergleich „nach Steuern“) */
@@ -440,8 +451,7 @@ export function backtest(werte: Wert[], reihen: Reihen, von: string, bis: string
   const aktien = werte.filter((w) => w.klasse !== "krypto").map((w) => w.kennung);
   const kurs = (k: string, tag: string) => { const b = reihen.get(k); if (!b) return 0; const i = stand(b, tag); return i < 0 ? 0 : b[i].kurs; };
   const hatKurs = (k: string, tag: string) => { const b = reihen.get(k); if (!b) return false; const i = stand(b, tag); return i >= 0 && b[i].tag === tag; };
-  const wocheVon = (tag: string) => { const t = new Date(tag + "T12:00:00Z"); const tagNr = (t.getUTCDay() + 6) % 7;
-    return new Date(t.getTime() - tagNr * 864e5).toISOString().slice(0, 10); };
+  const wocheVon = wochenstart;
   let letzteWoche = "";
 
   for (let t = Date.parse(von + "T12:00:00Z"); t <= Date.parse(bis + "T12:00:00Z"); t += 864e5) {

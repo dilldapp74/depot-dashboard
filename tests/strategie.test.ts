@@ -77,13 +77,17 @@ test("Gesperrte Werte (nach Stop) werden nicht gekauft", () => {
   assert.ok(!plan.orders.some((o) => o.kennung === "STARK"));
 });
 
-test("Stop-Loss: 15 % unter dem Hoch seit Kauf löst aus, 10 % nicht", () => {
+test("Stop-Loss: Grundeinstellung 25 %, einstellbar (hier 15 %)", () => {
   const b: Bar[] = [{ tag: "2025-01-01", kurs: 100 }, { tag: "2025-01-02", kurs: 120 }, { tag: "2025-01-03", kurs: 108 }, { tag: "2025-01-06", kurs: 101 }];
   const reihen: Reihen = new Map([["X", b]]);
   const p = { kennung: "X", klasse: "aktie" as const, lose: [{ datum: "2025-01-01", anteile: 1, kosten: 100 }] };
-  assert.equal(stopFaellig(p, reihen, "2025-01-03").faellig, false);   // −10 %
-  const s = stopFaellig(p, reihen, "2025-01-06");                      // −15,8 %
+  const st15 = { ...OFFENSIV, stop: { aktie: 15, etf: 15, krypto: 20 } };
+  assert.equal(stopFaellig(p, reihen, "2025-01-03", st15).faellig, false);   // −10 %
+  const s = stopFaellig(p, reihen, "2025-01-06", st15);                      // −15,8 %
   assert.equal(s.faellig, true); assert.equal(s.hoch, 120);
+  assert.equal(stopFaellig(p, reihen, "2025-01-06").faellig, false, "−15,8 % reicht bei 25 % nicht");
+  const tief: Reihen = new Map([["X", [...b, { tag: "2025-01-07", kurs: 89 }]]]);
+  assert.equal(stopFaellig(p, tief, "2025-01-07").faellig, true, "−25,8 % löst aus");
 });
 
 test("Krypto-Bremse: Gewinn kurz vor Ablauf der Haltefrist wird gehalten", () => {

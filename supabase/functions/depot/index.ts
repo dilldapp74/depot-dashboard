@@ -9,6 +9,10 @@
 //   { aktion: "sim_status", depot_id? }               Spieldepot: Bestand, Orders, Regeln, Tageswerte
 //   { aktion: "sim_order", depot_id, kennung, seite, betrag | anteile | alles }   Spieldepot: Order buchen
 //   { aktion: "sim_backtest", typ, parameter, startkapital?, gebuehr? }          Regel über das letzte Jahr testen
+//   { aktion: "automat", erzwingen? }  (Kopfzeile x-cron-secret) Handelsautomat sofort laufen lassen
+//
+// Handelsautomat: Bot-Spieldepots (art = 'bot') handeln täglich ab 16:00 Berlin nach handel.ts
+// (Momentum, Trend-/Marktfilter, Stop-Loss, Steuern, Gebühren). Läuft im Cron, ohne Mac oder Handy.
 //
 // Recherche: Tagesbewegungs-Alerts legen Aufträge an, der Cron arbeitet sie mit Claude (Websuche) ab.
 // Optionales Geheimnis ANTHROPIC_API_KEY – ohne läuft der Demo-Modus.
@@ -22,6 +26,12 @@
 import webpush from "npm:web-push@3.6.7";
 import { createClient } from "npm:@supabase/supabase-js@2.110.0";
 import Anthropic from "npm:@anthropic-ai/sdk@1.5.0";
+import {
+  type Bar, type Depot, handelstag, jahreswechsel, kauflisten, type Klasse, kryptoRuecklage, marktfilter,
+  neuesSteuerjahr, OFFENSIV, type Position as BotPosition, rangliste, type Reihen, STANDARD_EINSTELLUNGEN, type Steuerjahr,
+  type Wert, wochenstart,
+} from "./handel.ts";
+import { UNIVERSUM } from "./universum.ts";
 
 // Öffentlicher Schlüssel – derselbe wie VAPID_PUBLIC_KEY in config.js
 const VAPID_PUBLIC_KEY = "BIorsFql5jstcpgUYT3yr1LN1ZSRReqSbxVmLfw3D_j7dHdziYNhwwLuUSRVVlJNo1ul3IElxPcoDbCpXqAFHpI";
@@ -513,7 +523,8 @@ async function simBewerten(depotId: string) {
       return { ...p, kurs: null, wert: 0, tag_pct: 0, pl_abs: 0, pl_pct: 0, fehler: String((e as Error).message ?? e) };
     }
   }));
-  const gesamt = Number(depot.bargeld) + positionen.reduce((s, p) => s + p.wert, 0);
+  let gesamt = Number(depot.bargeld) + positionen.reduce((s, p) => s + p.wert, 0);
+  if (depot.art === "bot" && depot.steuer?.jahr) gesamt -= kryptoRuecklage(depot.steuer as Steuerjahr, botEinstellungen(depot).e);
   return { depot, positionen, orders: orders ?? [], gesamt };
 }
 
@@ -582,6 +593,7 @@ async function spieldepotsTaeglich() {
 async function simOrder(userId: string, b: Params) {
   const { data: depot } = await admin.from("spieldepots").select("*").eq("id", b.depot_id).eq("user_id", userId).maybeSingle();
   if (!depot) throw new Hinweis("Spieldepot nicht gefunden");
+  if (depot.art === "bot") throw new Hinweis("Im Automat-Depot handelt nur der Automat");
   if (b.seite !== "kauf" && b.seite !== "verkauf") throw new Hinweis("Bitte Kaufen oder Verkaufen wählen");
   const kennung = String(b.kennung ?? "").trim();
   if (!kennung) throw new Hinweis("Bitte eine ISIN oder einen Ticker angeben");
@@ -675,6 +687,160 @@ async function simBacktest(typ: string, p: Params, startkapital = 25000, gebuehr
     hinweis: "Tagesschlusskurse; Fremdwährungen mit dem heutigen Wechselkurs umgerechnet; keine Steuern, keine Dividenden." };
 }
 
+// ---------------------------------------------------------------- Handelsautomat (Bot-Spieldepot)
+//
+// Täglich ein Lauf ab 16:00 Berlin (Xetra und US-Börsen sind dann offen; Krypto auch am Wochenende):
+// Jahreswechsel → Stop-Loss → am ersten Werktag der Woche Umschichtung. Rechnet mit handel.ts im Speicher
+// und speichert jede Order samt Steuerstand über bot_buchen(). Jede Entscheidung landet im bot_protokoll.
+
+const BOT_START = 16 * 60, BOT_ENDE = 17 * 60 + 25;
+
+// deno-lint-ignore no-explicit-any
+function botEinstellungen(row: any) {
+  const ein = row?.einstellungen ?? {};
+  return { e: { ...STANDARD_EINSTELLUNGEN, ...(ein.steuer ?? {}), spread: { ...STANDARD_EINSTELLUNGEN.spread, ...(ein.steuer?.spread ?? {}) } },
+    st: { ...OFFENSIV, ...(ein.strategie ?? {}), stop: { ...OFFENSIV.stop, ...(ein.strategie?.stop ?? {}) } } };
+}
+
+/** Tageskurse des letzten Jahres in EUR, dazu: wird der Wert gerade gehandelt (Kurs jünger als 40 Minuten)? */
+async function botReihe(symbol: string, fx: Bar[]) {
+  const h = await chart(symbol, "1y", "1d", 600);
+  const meta = h.meta, ts: number[] = h.timestamp ?? [], c = schlusskurse(h);
+  const tage = new Map<string, number>();
+  ts.forEach((t, i) => { if (c[i] != null) tage.set(berlin(new Date(t * 1000)).tag, c[i] as number); });
+  // der heutige Balken soll den aktuellen Kurs tragen
+  if (meta.regularMarketTime) tage.set(berlin(new Date(meta.regularMarketTime * 1000)).tag, meta.regularMarketPrice);
+  let bars: Bar[] = [...tage].sort((a, b) => a[0].localeCompare(b[0])).map(([tag, kurs]) => ({ tag, kurs }));
+  if (meta.currency === "USD" && fx.length) {
+    bars = bars.map((b) => { let i = fx.length - 1; while (i > 0 && fx[i].tag > b.tag) i--; return { tag: b.tag, kurs: b.kurs / fx[i].kurs }; });
+  } else if (meta.currency !== "EUR") {
+    const f = await eurFaktor(meta.currency);
+    bars = bars.map((b) => ({ tag: b.tag, kurs: b.kurs * f }));
+  }
+  const offen = meta.regularMarketTime ? Date.now() / 1000 - meta.regularMarketTime < 40 * 60 : false;
+  return { bars, offen, name: String(meta.longName ?? meta.shortName ?? symbol).replace(/\s+/g, " ").trim() };
+}
+
+async function reihenLaden(kennungen: string[]) {
+  const fxRoh = await chart("EURUSD=X", "1y", "1d", 3600);
+  const fx: Bar[] = (fxRoh.timestamp ?? []).map((t: number, i: number) => ({ tag: berlin(new Date(t * 1000)).tag, kurs: schlusskurse(fxRoh)[i] }))
+    .filter((b: { kurs: number | null }) => b.kurs != null);
+  const reihen: Reihen = new Map(), offen = new Set<string>(), namen = new Map<string, string>(), fehlt: string[] = [];
+  const liste = [...new Set(kennungen)];
+  for (let i = 0; i < liste.length; i += 8) {
+    await Promise.all(liste.slice(i, i + 8).map(async (k) => {
+      try {
+        const r = await botReihe(k, fx);
+        if (r.bars.length < 30) { fehlt.push(k); return; }
+        reihen.set(k, r.bars); namen.set(k, r.name);
+        if (r.offen) offen.add(k);
+      } catch { fehlt.push(k); }
+    }));
+  }
+  return { reihen, offen, namen, fehlt };
+}
+
+// deno-lint-ignore no-explicit-any
+async function botProtokoll(row: any, art: string, text: string, daten: Params = {}) {
+  await admin.from("bot_protokoll").insert({ depot_id: row.id, user_id: row.user_id, art, text, daten });
+}
+
+/** Bot-Depot aus der Datenbank in den Rechenzustand von handel.ts übertragen */
+// deno-lint-ignore no-explicit-any
+async function botDepotLaden(row: any, jahr: number, e = STANDARD_EINSTELLUNGEN): Promise<Depot> {
+  const { data: orders } = await admin.from("sim_orders").select("*").eq("depot_id", row.id).order("zeit");
+  const lose = kauflisten((orders ?? []).map((o) => ({ zeit: o.zeit, kennung: o.kennung, seite: o.seite, anteile: Number(o.anteile),
+    kurs: Number(o.kurs), gebuehr: Number(o.gebuehr) })));
+  const klasseVon = new Map<string, Klasse>(UNIVERSUM.map((w) => [w.kennung, w.klasse]));
+  for (const o of orders ?? []) if (o.klasse) klasseVon.set(o.kennung, o.klasse);
+  const bestand = new Map<string, BotPosition>();
+  for (const [k, l] of lose) if (l.reduce((s, x) => s + x.anteile, 0) > 1e-9) bestand.set(k, { kennung: k, klasse: klasseVon.get(k) ?? "aktie", lose: l });
+  const sj: Steuerjahr = row.steuer?.jahr ? row.steuer : neuesSteuerjahr(jahr, null, e);
+  return { bargeld: Number(row.bargeld), bestand, sj, gesperrt: new Map(Object.entries(row.gesperrt ?? {})),
+    summen: { orders: 0, gebuehren: 0, spread: 0, abgeltung: 0, krypto_steuer: 0 } };
+}
+
+const euro = (x: number) => `${de(x)} €`;
+
+/** Ein Lauf für ein Bot-Depot */
+// deno-lint-ignore no-explicit-any
+async function botLauf(row: any, tag: string, werktag: boolean) {
+  const { e, st } = botEinstellungen(row);
+  const jahr = Number(tag.slice(0, 4));
+  const dep = await botDepotLaden(row, jahr, e);
+
+  if (dep.sj.jahr < jahr) {
+    const vorjahr = dep.sj.jahr, betrag = jahreswechsel(dep, jahr, e);
+    const { error } = await admin.rpc("bot_steuer_abrechnen", { p_depot: row.id, p_betrag: betrag, p_steuerjahr: dep.sj });
+    if (error) throw new Error("Jahresabrechnung: " + error.message);
+    await botProtokoll(row, "steuer", `Jahresabrechnung ${vorjahr}: Krypto-Steuer ${euro(betrag)} abgebucht`, { betrag });
+  }
+
+  const woche = wochenstart(tag), rotieren = werktag && row.letzte_rotation !== woche;
+  const gehalten = [...dep.bestand.keys()];
+  const kennungen = [...(rotieren ? UNIVERSUM.map((w) => w.kennung) : []), ...gehalten, "EUNL.DE", "BTC-EUR"];
+  const { reihen, offen, namen, fehlt } = await reihenLaden(kennungen);
+  const werte: Wert[] = UNIVERSUM.filter((w) => reihen.has(w.kennung));
+  for (const p of dep.bestand.values()) if (!werte.some((w) => w.kennung === p.kennung)) werte.push({ kennung: p.kennung, name: p.kennung, klasse: p.klasse });
+
+  const aus = handelstag(dep, werte, reihen, tag, rotieren, (k) => offen.has(k), st, e);
+
+  const gebucht: string[] = [];
+  for (const a of aus) {
+    const name = namen.get(a.kennung) ?? a.kennung;
+    const { error } = await admin.rpc("bot_buchen", {
+      p_depot: row.id, p_kennung: a.kennung, p_symbol: a.kennung, p_name: name, p_klasse: a.klasse, p_seite: a.seite,
+      p_anteile: a.anteile, p_kurs: a.kurs, p_gebuehr: a.gebuehr, p_spread: a.spread, p_realisiert: a.realisiert ?? null,
+      p_steuer: a.steuer ?? 0, p_steuerjahr: a.sj, p_ruecklage: kryptoRuecklage(a.sj, e), p_grund: a.grund });
+    if (error) { await botProtokoll(row, "fehler", `${a.seite} ${a.kennung} abgelehnt: ${error.message}`, a); break; }
+    const text = `${a.seite === "kauf" ? "Kauf" : "Verkauf"} ${de(a.anteile, 4)} × ${name} zu ${kursText(a.kurs)} € = ${euro(a.anteile * a.kurs)}`
+      + (a.steuer ? ` · Steuer ${euro(a.steuer)}` : "") + (a.realisiert != null ? ` · Ergebnis ${vz(a.realisiert)}${euro(a.realisiert)}` : "")
+      + ` – ${a.grund}`;
+    await botProtokoll(row, a.grund.startsWith("Stop") ? "stop" : a.seite, text, a);
+    gebucht.push(text);
+  }
+
+  if (rotieren) {
+    const liste = rangliste(werte, reihen, tag, st).slice(0, 8), filter = marktfilter(reihen, tag, st);
+    await botProtokoll(row, "lauf", `Wochen-Umschichtung: ${aus.length ? `${aus.length} Order(s)` : "keine Änderung"} · `
+      + `Aktien ${filter.aktie ? "erlaubt" : "gesperrt (Marktfilter)"}, Krypto ${filter.krypto ? "erlaubt" : "gesperrt (Marktfilter)"}`
+      + (fehlt.length ? ` · ohne Kurse: ${fehlt.length} Werte` : ""), {
+        rangliste: liste.map((r) => ({ kennung: r.kennung, name: namen.get(r.kennung) ?? r.kennung, r3: r.r3, r6: r.r6, trend: r.trendOk })),
+        filter, fehlt });
+  } else if (!aus.length) {
+    await botProtokoll(row, "lauf", `Täglicher Lauf: keine Aktion (${dep.bestand.size} Positionen, Stop-Loss geprüft)`);
+  }
+
+  // Umschichtung gilt erst als erledigt, wenn alle Plätze besetzt sind (oder kein Geld mehr frei ist) –
+  // sonst z. B. bei geschlossener US-Börse am nächsten Tag erneut versuchen, statt eine Woche Bargeld zu halten
+  const fertig = dep.bestand.size >= st.anzahl || dep.bargeld - kryptoRuecklage(dep.sj, e) < st.min_order * 2;
+  await admin.from("spieldepots").update({ gesperrt: Object.fromEntries(dep.gesperrt), letzter_lauf: tag,
+    ...(rotieren && fertig ? { letzte_rotation: woche } : {}) }).eq("id", row.id);
+  if (gebucht.length) await sendeAn(row.user_id, `Automat: ${gebucht.length} Order${gebucht.length > 1 ? "s" : ""}`,
+    gebucht.map((g) => g.split(" – ")[0]).join(" · ").slice(0, 240), `automat-${row.id}`);
+  return gebucht.length;
+}
+
+/** Alle Bot-Depots: höchstens ein Lauf je Tag, ab 16:00 Berlin (werktags bis 17:25, damit Xetra noch offen ist) */
+async function automatLaufen(erzwingen = false) {
+  const jetzt = berlin();
+  const { data: depots } = await admin.from("spieldepots").select("*").eq("art", "bot").eq("pausiert", false);
+  let orders = 0;
+  for (const row of depots ?? []) {
+    if (!erzwingen) {
+      if (row.letzter_lauf === jetzt.tag || jetzt.minuten < BOT_START) continue;
+      if (jetzt.werktag && jetzt.minuten > BOT_ENDE) continue;
+    }
+    try { orders += await botLauf(row, jetzt.tag, jetzt.werktag); }
+    catch (e) {
+      console.error("Automat:", e);
+      await botProtokoll(row, "fehler", `Lauf abgebrochen: ${(e as Error).message ?? e}`);
+      await admin.from("spieldepots").update({ letzter_lauf: jetzt.tag }).eq("id", row.id);
+    }
+  }
+  return orders;
+}
+
 // ---------------------------------------------------------------- Einstieg
 
 async function angemeldet(req: Request): Promise<string | null> {
@@ -706,6 +872,10 @@ Deno.serve(async (req) => {
       return json({ ok: !probe.error, yahoo: probe.error ?? "erreichbar", kurs: probe.price, verlauf: probe.history.length,
         push: Boolean(VAPID_PRIVATE_KEY), recherche: claude ? RECHERCHE_MODELL : "demo" });
     }
+    if (body.aktion === "automat") {
+      if (!(await cronErlaubt(req))) return json({ error: "nicht erlaubt" }, 401);
+      return json({ ok: true, orders: await automatLaufen(Boolean(body.erzwingen)) });
+    }
     if (body.aktion === "cron") {
       if (!(await cronErlaubt(req))) return json({ error: "nicht erlaubt" }, 401);
       const { data } = await admin.from("alert_regeln").select("user_id").eq("aktiv", true);
@@ -715,7 +885,10 @@ Deno.serve(async (req) => {
       let spieldepots = 0;
       try { spieldepots = await spieldepotsTaeglich(); } catch (e) { console.error("Spieldepot:", e); }
       // Recherche dauert oft länger als der Cron-Aufruf wartet – deshalb im Hintergrund weiterlaufen lassen
-      const hintergrund = rechercheAbarbeiten().catch((e) => console.error("Recherche:", e));
+      const hintergrund = (async () => {
+        try { await automatLaufen(); } catch (e) { console.error("Automat:", e); }
+        try { await rechercheAbarbeiten(); } catch (e) { console.error("Recherche:", e); }
+      })();
       // deno-lint-ignore no-explicit-any
       const rt = (globalThis as any).EdgeRuntime;
       if (rt?.waitUntil) rt.waitUntil(hintergrund); else await hintergrund;
