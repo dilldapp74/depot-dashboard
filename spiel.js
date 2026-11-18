@@ -7,9 +7,11 @@
   const $ = id => document.getElementById(id);
   let sim = null, simDepot = localGet('simDepot') || null, simChart = null, btChart = null, simTimer = null;
 
-  // ---------- Ansicht umschalten: Mein Depot / Spieldepot ----------
+  // ---------- Ansicht umschalten: Mein Depot / Spieldepot / Automat ----------
   function ansicht(v) {
     document.body.classList.toggle('v-spiel', v === 'spiel');
+    document.body.classList.toggle('v-bot', v === 'bot');
+    if (v === 'bot') window.automatZeigen?.();
     document.querySelectorAll('.ansicht button').forEach(b => b.classList.toggle('on', b.dataset.v === v));
     localSet('ansicht', v);
     if (v === 'spiel') {
@@ -239,5 +241,5 @@
 
   // ---------- Start ----------
   sb.auth.onAuthStateChange((_e, session) => { if (session && document.body.classList.contains('v-spiel')) setTimeout(simLaden, 0); });
-  ansicht(localGet('ansicht') === 'spiel' ? 'spiel' : 'echt');
+  ansicht(['spiel', 'bot'].includes(localGet('ansicht')) ? localGet('ansicht') : 'echt');
 })();

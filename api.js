@@ -112,6 +112,9 @@ function supabaseModus() {
     async simRegelNeu(depotId, typ, parameter) { pruefe(await sb.from('sim_regeln').insert({ depot_id: depotId, typ, parameter })); },
     async simRegelAktiv(id, aktiv) { pruefe(await sb.from('sim_regeln').update({ aktiv }).eq('id', id)); },
     async simRegelLoeschen(id) { pruefe(await sb.from('sim_regeln').delete().eq('id', id)); },
+    // Handelsautomat: Status über die Edge Function, Anhalten/Fortsetzen direkt (Nutzer darf nur „pausiert“ ändern)
+    async botStatus() { return funktion('bot_status'); },
+    async botPausieren(depotId, pausiert) { pruefe(await sb.from('spieldepots').update({ pausiert }).eq('id', depotId)); },
   };
 }
 

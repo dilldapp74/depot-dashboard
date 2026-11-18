@@ -69,6 +69,11 @@ und Alerts. Später: als App auf Mac und Android (PWA), Server im Dauerbetrieb, 
   gemeinsam mit der Recherche), danach `nachlauf = true` → zweiter Lauf am selben Tag kauft. Veto = Wert bis Wochenende gesperrt,
   der nächste rückt nach. Ohne API-Schlüssel `demo` (sofort frei); Fehler/Grenze (8 je Tag, 5 €/Monat) → Kauf ohne Prüfung.
   Aufstocken und Verkäufe werden nie geprüft.
+- App: Reiter „Automat“ (`#v-bot`, `body.v-bot`, `automat.js`) zeigt das Bot-Depot über `bot_status` (Kennzahlen, Kosten, Steuern,
+  Verlauf gegen MSCI World/Bitcoin, Protokoll, Prüfungen, Orders) und hat den Not-Aus (`pausiert`). Das Bot-Depot erscheint
+  nicht in der Auswahl der normalen Spieldepots (`sim_status` filtert `art = 'bot'`).
+- Rechenzeit: Edge Functions brechen nach ~2 s CPU ab („CPU Time exceeded“). Im Automaten keine teuren Aufrufe je Kurstag
+  (z. B. kein neues `Intl.DateTimeFormat`); ein Lauf braucht ~0,8 s.
 
 ## Recherche (supabase/recherche.sql)
 - Tagesbewegungs-Alert → Auftrag in `recherchen` (einmal je Position und Tag). Der Cron arbeitet höchstens

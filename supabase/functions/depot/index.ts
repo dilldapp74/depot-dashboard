@@ -9,6 +9,7 @@
 //   { aktion: "sim_status", depot_id? }               Spieldepot: Bestand, Orders, Regeln, Tageswerte
 //   { aktion: "sim_order", depot_id, kennung, seite, betrag | anteile | alles }   Spieldepot: Order buchen
 //   { aktion: "sim_backtest", typ, parameter, startkapital?, gebuehr? }          Regel über das letzte Jahr testen
+//   { aktion: "bot_status" }   aus der App → Automat-Depot: Bestand, Orders, Protokoll, Prüfungen, Vergleich
 //   { aktion: "automat", erzwingen? }  (Kopfzeile x-cron-secret) Handelsautomat sofort laufen lassen
 //
 // Handelsautomat: Bot-Spieldepots (art = 'bot') handeln täglich ab 16:00 Berlin nach handel.ts
@@ -628,7 +629,7 @@ async function simOrder(userId: string, b: Params) {
 
 /** Status eines Spieldepots für die App */
 async function simStatus(userId: string, depotId?: string) {
-  const { data: depots } = await admin.from("spieldepots").select("id, name").eq("user_id", userId).order("erstellt");
+  const { data: depots } = await admin.from("spieldepots").select("id, name").eq("user_id", userId).neq("art", "bot").order("erstellt");
   if (!depots?.length) return { depots: [] };
   const id = depots.find((d) => d.id === depotId)?.id ?? depots[0].id;
   const stand = await simBewerten(id);
@@ -968,6 +969,43 @@ async function pruefungAbarbeiten() {
   return fertig(frei ? "frei" : "abgelehnt", text);
 }
 
+/** Automat-Depot für die App: Bestand, Kennzahlen, Orders, Protokoll, Prüfungen und Vergleich mit MSCI World / Bitcoin */
+async function botStatus(userId: string) {
+  const { data: row } = await admin.from("spieldepots").select("id").eq("user_id", userId).eq("art", "bot").order("erstellt").limit(1).maybeSingle();
+  if (!row) return { depot: null };
+  const stand = await simBewerten(row.id);
+  const d = stand.depot, { e } = botEinstellungen(d);
+  const [{ data: protokoll }, { data: pruefungen }, { data: tageswerte }] = await Promise.all([
+    admin.from("bot_protokoll").select("zeit, art, text").eq("depot_id", row.id).order("zeit", { ascending: false }).limit(40),
+    admin.from("bot_pruefungen").select("zeit, kennung, name, status, grund, urteil, modell, kosten_usd").eq("depot_id", row.id)
+      .order("zeit", { ascending: false }).limit(20),
+    admin.from("sim_tageswerte").select("tag, wert").eq("depot_id", row.id).order("tag"),
+  ]);
+  const o = stand.orders;
+  const summe = (f: (x: Params) => number) => o.reduce((s, x) => s + f(x), 0);
+  const kosten = { gebuehren: summe((x) => Number(x.gebuehr)), spread: summe((x) => Number(x.spread ?? 0)),
+    steuern: summe((x) => Number(x.steuer ?? 0)), realisiert: summe((x) => Number(x.realisiert ?? 0)),
+    krypto_ruecklage: d.steuer?.jahr ? kryptoRuecklage(d.steuer as Steuerjahr, e) : 0 };
+  // Vergleich: dasselbe Startkapital am Starttag in MSCI World bzw. Bitcoin angelegt
+  const start = String(d.erstellt).slice(0, 10), kapital = Number(d.startkapital);
+  const vergleich: Record<string, [string, number][]> = {};
+  for (const [name, sym] of [["welt", "EUNL.DE"], ["bitcoin", "BTC-EUR"]]) {
+    try {
+      const h = await chart(sym, "1y", "1d", 3600), tagVon = boersentag(h.meta.gmtoffset), c = schlusskurse(h);
+      const tage = new Map<string, number>();
+      (h.timestamp ?? []).forEach((t: number, i: number) => { if (c[i] != null) tage.set(tagVon(t), c[i] as number); });
+      tage.set(berlin().tag, h.meta.regularMarketPrice);                 // heute: aktueller Kurs
+      const reihe: [string, number][] = [...tage].sort((a, b) => a[0].localeCompare(b[0]));
+      const basis = [...reihe].reverse().find((x) => x[0] <= start) ?? reihe.find((x) => x[0] >= start);
+      if (basis) vergleich[name] = reihe.filter((x) => x[0] >= start).map(([t, k]) => [t, kapital * k / basis[1]]);
+    } catch { /* Vergleich ist nur Zugabe */ }
+  }
+  return { depot: { id: d.id, name: d.name, startkapital: kapital, bargeld: Number(d.bargeld), erstellt: d.erstellt, pausiert: d.pausiert,
+    letzter_lauf: d.letzter_lauf, letzte_rotation: d.letzte_rotation, gebuehr: Number(d.gebuehr) },
+    positionen: stand.positionen, gesamt: stand.gesamt, orders: o.slice(-60).reverse(), kosten, protokoll: protokoll ?? [],
+    pruefungen: pruefungen ?? [], tageswerte: tageswerte ?? [], vergleich, demo: !claude, generated: Date.now() / 1000 };
+}
+
 // ---------------------------------------------------------------- Einstieg
 
 async function angemeldet(req: Request): Promise<string | null> {
@@ -1030,6 +1068,7 @@ Deno.serve(async (req) => {
     if (body.aktion === "portfolio") return json(await portfolio(userId, true));
     if (body.aktion === "pruefen") return json({ fired: await alertsPruefen(userId) });
     if (body.aktion === "sim_status") return json(await simStatus(userId, body.depot_id));
+    if (body.aktion === "bot_status") return json(await botStatus(userId));
     if (body.aktion === "sim_order") return json(await simOrder(userId, body));
     if (body.aktion === "sim_backtest") {
       return json(await simBacktest(String(body.typ), body.parameter ?? {}, Number(body.startkapital) || 25000,

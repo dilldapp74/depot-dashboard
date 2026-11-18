@@ -2,13 +2,14 @@
 // Strategie (wie im Kanban-Board): immer zuerst aus dem Netz laden, damit Updates und
 // aktuelle Kurse sofort ankommen; ohne Verbindung die zuletzt gespeicherte Fassung zeigen.
 
-const CACHE = 'depot-v8';
+const CACHE = 'depot-v9';
 
 const DATEIEN = [
   './',
   './config.js',
   './api.js',
   './spiel.js',
+  './automat.js',
   './manifest.webmanifest',
   './icons/icon-192.png',
   './icons/icon-512.png',
