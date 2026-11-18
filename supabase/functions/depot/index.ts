@@ -408,11 +408,13 @@ async function rechercheAbarbeiten() {
 // Dieselbe Entscheidungslogik (regelEntscheiden) läuft im täglichen Cron und im Backtest.
 // Orders bucht nur sim_buchen() in der Datenbank – mit dem Kurs, den diese Funktion selbst abruft.
 
+// Formatierer nur einmal anlegen – ein neuer je Aufruf kostete im Automaten über 1 s Rechenzeit
+const BERLIN_FORMAT = new Intl.DateTimeFormat("en-GB", {
+  timeZone: "Europe/Berlin", year: "numeric", month: "2-digit", day: "2-digit",
+  hour: "2-digit", minute: "2-digit", weekday: "short", hour12: false,
+});
 const berlin = (d = new Date()) => {
-  const teile = Object.fromEntries(new Intl.DateTimeFormat("en-GB", {
-    timeZone: "Europe/Berlin", year: "numeric", month: "2-digit", day: "2-digit",
-    hour: "2-digit", minute: "2-digit", weekday: "short", hour12: false,
-  }).formatToParts(d).map((t) => [t.type, t.value]));
+  const teile = Object.fromEntries(BERLIN_FORMAT.formatToParts(d).map((t) => [t.type, t.value]));
   return { tag: `${teile.year}-${teile.month}-${teile.day}`, minuten: Number(teile.hour) * 60 + Number(teile.minute),
     werktag: !["Sat", "Sun"].includes(teile.weekday) };
 };
@@ -716,14 +718,17 @@ function botEinstellungen(row: any) {
     st: { ...OFFENSIV, ...(ein.strategie ?? {}), stop: { ...OFFENSIV.stop, ...(ein.strategie?.stop ?? {}) } } };
 }
 
+/** Handelstag (JJJJ-MM-TT) eines Yahoo-Zeitstempels in der Zeitzone der Börse (gmtoffset in Sekunden) */
+const boersentag = (gmtoffset = 0) => (t: number) => new Date((t + gmtoffset) * 1000).toISOString().slice(0, 10);
+
 /** Tageskurse des letzten Jahres in EUR, dazu: wird der Wert gerade gehandelt (Kurs jünger als 40 Minuten)? */
 async function botReihe(symbol: string, fx: Bar[]) {
   const h = await chart(symbol, "1y", "1d", 600);
   const meta = h.meta, ts: number[] = h.timestamp ?? [], c = schlusskurse(h);
-  const tage = new Map<string, number>();
-  ts.forEach((t, i) => { if (c[i] != null) tage.set(berlin(new Date(t * 1000)).tag, c[i] as number); });
+  const tage = new Map<string, number>(), tagVon = boersentag(meta.gmtoffset);
+  ts.forEach((t, i) => { if (c[i] != null) tage.set(tagVon(t), c[i] as number); });
   // der heutige Balken soll den aktuellen Kurs tragen
-  if (meta.regularMarketTime) tage.set(berlin(new Date(meta.regularMarketTime * 1000)).tag, meta.regularMarketPrice);
+  if (meta.regularMarketTime) tage.set(tagVon(meta.regularMarketTime), meta.regularMarketPrice);
   let bars: Bar[] = [...tage].sort((a, b) => a[0].localeCompare(b[0])).map(([tag, kurs]) => ({ tag, kurs }));
   if (meta.currency === "USD" && fx.length) {
     bars = bars.map((b) => { let i = fx.length - 1; while (i > 0 && fx[i].tag > b.tag) i--; return { tag: b.tag, kurs: b.kurs / fx[i].kurs }; });
@@ -737,7 +742,8 @@ async function botReihe(symbol: string, fx: Bar[]) {
 
 async function reihenLaden(kennungen: string[]) {
   const fxRoh = await chart("EURUSD=X", "1y", "1d", 3600);
-  const fx: Bar[] = (fxRoh.timestamp ?? []).map((t: number, i: number) => ({ tag: berlin(new Date(t * 1000)).tag, kurs: schlusskurse(fxRoh)[i] }))
+  const fxTag = boersentag(fxRoh.meta.gmtoffset);
+  const fx: Bar[] = (fxRoh.timestamp ?? []).map((t: number, i: number) => ({ tag: fxTag(t), kurs: schlusskurse(fxRoh)[i] }))
     .filter((b: { kurs: number | null }) => b.kurs != null);
   const reihen: Reihen = new Map(), offen = new Set<string>(), namen = new Map<string, string>(), fehlt: string[] = [];
   const liste = [...new Set(kennungen)];
