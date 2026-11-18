@@ -178,6 +178,17 @@ button.icon{font-size:17px;line-height:1;padding:6px 10px}
 #v-spiel{display:none}
 body.v-spiel #v-spiel{display:block}
 body.v-spiel #v-echt, body.v-spiel .nur-echt{display:none !important}
+#v-bot{display:none}
+body.v-bot #v-bot{display:block}
+body.v-bot #v-echt, body.v-bot .nur-echt{display:none !important}
+.badge{display:inline-block;font-size:12px;font-weight:600;padding:2px 9px;border-radius:999px;background:var(--chip)}
+.badge.an{background:color-mix(in srgb,var(--pos) 18%,transparent);color:var(--pos)}
+.badge.aus{background:color-mix(in srgb,var(--neg) 18%,transparent);color:var(--neg)}
+.hinweisbox{border-left:3px solid var(--accent);padding:8px 12px;background:var(--chip);border-radius:6px;font-size:13px;margin-bottom:12px}
+.plog .e{padding:7px 0;border-bottom:1px solid var(--line);font-size:13px}
+.plog .e .s{color:var(--muted);font-size:12px}
+.plog .art{display:inline-block;min-width:64px;font-size:11px;font-weight:600;text-transform:uppercase;color:var(--muted)}
+.plog .art.kauf{color:var(--pos)}.plog .art.verkauf,.plog .art.stop,.plog .art.fehler{color:var(--neg)}
 .sbar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:12px}
 .sbar select{font:inherit;padding:6px 8px;border:1px solid var(--line);border-radius:6px;background:var(--card);color:var(--text)}
 .sform{display:flex;flex-direction:column;gap:10px}
@@ -199,12 +210,12 @@ body.v-spiel #v-echt, body.v-spiel .nur-echt{display:none !important}
   .sfelder{grid-template-columns:1fr}
   #btdlg{width:100vw}
   .sform input:not([type=radio]):not([type=checkbox]),.sform select{font-size:16px}
-  #s-tbl thead{display:none}
-  #s-tbl tr{display:grid;grid-template-columns:1fr 1fr;column-gap:12px;padding:10px 0;border-bottom:1px solid var(--line)}
-  #s-tbl td{display:flex;justify-content:space-between;gap:8px;border:none;padding:2px 0;white-space:normal}
-  #s-tbl td::before{content:attr(data-label);color:var(--muted);font-size:12px}
-  #s-tbl td.name{grid-column:1 / -1;display:block}
-  #s-tbl td.name::before{content:none}
+  #s-tbl thead,#b-tbl thead{display:none}
+  #s-tbl tr,#b-tbl tr{display:grid;grid-template-columns:1fr 1fr;column-gap:12px;padding:10px 0;border-bottom:1px solid var(--line)}
+  #s-tbl td,#b-tbl td{display:flex;justify-content:space-between;gap:8px;border:none;padding:2px 0;white-space:normal}
+  #s-tbl td::before,#b-tbl td::before{content:attr(data-label);color:var(--muted);font-size:12px}
+  #s-tbl td.name,#b-tbl td.name{grid-column:1 / -1;display:block}
+  #s-tbl td.name::before,#b-tbl td.name::before{content:none}
 }
 
 /* ---------- Anmeldung (nur Supabase-Fassung) ---------- */
@@ -247,7 +258,7 @@ body.supabase .nur-lokal{display:none !important}
     </div>
   </header>
   <nav class="ansicht nur-supabase" aria-label="Ansicht">
-    <button data-v="echt" class="on">Mein Depot</button><button data-v="spiel">Spieldepot</button>
+    <button data-v="echt" class="on">Mein Depot</button><button data-v="spiel">Spieldepot</button><button data-v="bot">Automat</button>
   </nav>
   <div id="v-echt">
   <div class="offline" id="offline">Keine Verbindung zum Server – angezeigt wird der letzte gespeicherte Stand.</div>
@@ -369,6 +380,53 @@ body.supabase .nur-lokal{display:none !important}
         <button id="s-loeschen" class="linkbtn">Dieses Spieldepot löschen</button></div>
     </div>
   </div><!-- /v-spiel -->
+
+  <!-- ---------- Handelsautomat (eigenes Spieldepot, handelt selbstständig im Cron) ---------- -->
+  <div id="v-bot" class="nur-supabase">
+    <section class="card" id="b-leer" hidden>
+      <h2>Kein Automat-Depot</h2>
+      <p class="meta" style="margin-top:0">Der Handelsautomat ist für dieses Konto noch nicht eingerichtet.</p>
+    </section>
+    <div id="b-inhalt" hidden>
+      <div class="sbar">
+        <b id="b-name">Automat</b> <span class="badge" id="b-status">–</span>
+        <span class="meta" id="b-stamp"></span>
+        <button id="b-schalter" title="Automat anhalten oder fortsetzen">Anhalten</button>
+      </div>
+      <div class="hinweisbox" id="b-hinweis"></div>
+      <section class="kpis">
+        <div class="card kpi"><div class="label">Gesamtwert</div><div class="val" id="b-total">–</div><div class="sub" id="b-start"></div></div>
+        <div class="card kpi"><div class="label">Gewinn / Verlust seit Start</div><div class="val" id="b-pl">–</div><div class="sub" id="b-vergl"></div></div>
+        <div class="card kpi"><div class="label">Kosten</div><div class="val" id="b-kosten">–</div><div class="sub" id="b-kosteninfo"></div></div>
+        <div class="card kpi"><div class="label">Steuern</div><div class="val" id="b-steuer">–</div><div class="sub" id="b-steuerinfo"></div></div>
+      </section>
+      <section class="card">
+        <h2>Wertverlauf <span class="meta">· Automat im Vergleich, gleiches Startkapital</span></h2>
+        <div class="chartbox"><canvas id="b-chart"></canvas></div>
+        <div class="meta" id="b-chartinfo"></div>
+      </section>
+      <section class="card">
+        <h2>Positionen <span class="meta" id="b-bar"></span></h2>
+        <div class="tablewrap"><table id="b-tbl"><thead><tr><th class="l">Position</th><th>Anteile</th><th>Einstand</th><th>Kurs</th><th>Wert</th><th>Heute</th><th>G/V</th></tr></thead><tbody></tbody></table></div>
+      </section>
+      <section class="grid" style="margin-top:16px">
+        <div class="card">
+          <h2>Protokoll <span class="meta">· jede Entscheidung des Automaten</span></h2>
+          <div id="b-protokoll" class="plog"></div>
+        </div>
+        <div class="card">
+          <h2>Kaufprüfungen durch Claude</h2>
+          <div id="b-pruefungen" class="plog"></div>
+          <h2 style="margin-top:18px">Orders</h2>
+          <div id="b-orders" class="plog"></div>
+        </div>
+      </section>
+      <div class="foot">So handelt der Automat: werktags ab 16:00 prüft er den Stop-Loss (25 % bei Aktien und ETFs, 30 % bei Krypto unter dem Hoch seit Kauf).
+        Montags schichtet er um: die 4 Werte mit dem stärksten Anstieg der letzten 3–6 Monate aus DAX, Nasdaq 100, 5 ETFs und 9 Kryptowährungen –
+        nur über ihrem 100-Tage-Schnitt und nur, wenn der Gesamtmarkt über seinem 200-Tage-Schnitt liegt. 1 € Gebühr und Spread je Order,
+        Abgeltungsteuer sofort, Krypto-Steuer (35 %) als Rücklage bis zum Jahresende. Spielgeld – keine echten Orders, keine Anlageempfehlung.</div>
+    </div>
+  </div><!-- /v-bot -->
 
   <div class="foot">Kurse von Yahoo Finance, teils verzögert, ohne Gewähr. Fremdwährungen in EUR umgerechnet.
     <span class="nur-lokal">Alle Daten bleiben auf deinem Rechner.</span>
@@ -848,6 +906,7 @@ if(API.modus==='supabase'){
   starten();
 }
 </script>
+<script src="automat.js"></script>
 <script src="spiel.js"></script>
 </body>
 </html>

@@ -1,0 +1,16 @@
+# Automatische Tests bei jedem Push und Pull Request (Steuern, Gebühren, Strategie, Backtest)
+name: Tests
+on:
+  push:
+  pull_request:
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24          # führt TypeScript-Dateien ohne Installation aus
+      - run: node --test "tests/*.test.ts"   # Muster statt Ordner: Node 24 nimmt keinen Ordner an
+      - name: Keine Depotdaten oder Geheimnisse im Repo
+        run: bash scripts/check_secrets.sh
