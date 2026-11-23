@@ -89,19 +89,57 @@ export function anteileAm(b: Bestand, tag: string): number {
   return anteile;
 }
 
+/** Anteile, die am Ende von `tag` im Depot lagen, aber später noch verkauft wurden */
+export function spaeterVerkauftAm(b: Bestand, tag: string): number {
+  const danach = b.buchungen.filter((x) => x.art === "verkauf" && x.datum && x.datum > tag)
+    .reduce((s, x) => s + Number(x.anteile), 0);
+  return Math.min(anteileAm(b, tag), danach);
+}
+
+/** Käufe minus Verkäufe (in Anteilen) genau an diesem Tag */
+function bewegungAm(b: Bestand, tag: string): number {
+  return b.buchungen.filter((x) => x.datum === tag)
+    .reduce((s, x) => s + (x.art === "kauf" ? 1 : -1) * Number(x.anteile), 0);
+}
+
+/** Ein Tag im Depotverlauf: [Tag, Wert gesamt, davon später verkauft, Käufe − Verkäufe des Tages zum Tageskurs] */
+export type VerlaufTag = [string, number, number, number];
+
 /**
  * Depotverlauf über alle Tage, an denen es Kurse gibt. `kurse` je Bestand: Tag → Kurs in €.
  * Lücken (Wochenende, Feiertag) werden mit dem letzten Kurs gefüllt, vor dem ersten Kurs mit dem ersten.
+ * Je Tag zusätzlich: welcher Teil des Werts später verkauft wurde, und wie viel Wert an dem Tag durch Käufe
+ * und Verkäufe hinzukam bzw. wegging (zum Tageskurs) – so lässt sich die Kursentwicklung davon trennen.
  */
-export function depotverlauf(posten: { bestand: Bestand; kurse: Map<string, number> }[]): [string, number][] {
+export function depotverlauf(posten: { bestand: Bestand; kurse: Map<string, number> }[]): VerlaufTag[] {
   const tage = [...new Set(posten.flatMap((p) => [...p.kurse.keys()]))].sort();
   const letzter = posten.map((p) => { const t = [...p.kurse.keys()].sort()[0]; return t ? p.kurse.get(t)! : 0; });
+  // Buchungstage ohne eigenen Kurs (z. B. Verkauf am Wochenende) dem nächsten Kurstag zuordnen
+  const naechsterKurstag = (d: string) => tage.find((t) => t >= d);
+  const buchungstage = new Set(posten.flatMap((p) => p.bestand.buchungen.map((b) => b.datum).filter(Boolean) as string[]));
+  const verschoben = new Map<string, string[]>();
+  for (const d of buchungstage) { const t = naechsterKurstag(d); if (t) verschoben.set(t, [...(verschoben.get(t) ?? []), d]); }
   return tage.map((tag) => {
-    let wert = 0;
+    let wert = 0, verkauft = 0, fluss = 0;
     posten.forEach((p, i) => {
       if (p.kurse.has(tag)) letzter[i] = p.kurse.get(tag)!;
       wert += anteileAm(p.bestand, tag) * letzter[i];
+      verkauft += spaeterVerkauftAm(p.bestand, tag) * letzter[i];
+      for (const d of verschoben.get(tag) ?? []) fluss += bewegungAm(p.bestand, d) * letzter[i];
     });
-    return [tag, wert] as [string, number];
+    return [tag, wert, verkauft, fluss] as VerlaufTag;
   });
+}
+
+/** Käufe und Verkäufe mit Datum, je Tag und Art zusammengefasst (für Markierungen im Diagramm) */
+export function ereignisse(alle: Bestand[]): { tag: string; art: "kauf" | "verkauf"; namen: string[] }[] {
+  const m = new Map<string, { tag: string; art: "kauf" | "verkauf"; namen: string[] }>();
+  for (const b of alle) for (const x of b.buchungen) {
+    if (!x.datum) continue;
+    const k = `${x.datum}|${x.art}`, e = m.get(k) ?? { tag: x.datum, art: x.art, namen: [] };
+    const name = b.name || b.kennung;
+    if (!e.namen.includes(name)) e.namen.push(name);
+    m.set(k, e);
+  }
+  return [...m.values()].sort((a, b) => a.tag.localeCompare(b.tag) || a.art.localeCompare(b.art));
 }

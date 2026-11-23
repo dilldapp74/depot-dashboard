@@ -34,7 +34,7 @@ import {
   type Wert, wochenstart,
 } from "./handel.ts";
 import { UNIVERSUM } from "./universum.ts";
-import { type Buchung, bestaende, depotverlauf } from "./bestand.ts";
+import { type Buchung, bestaende, depotverlauf, ereignisse, type VerlaufTag } from "./bestand.ts";
 
 // Öffentlicher Schlüssel – derselbe wie VAPID_PUBLIC_KEY in config.js
 const VAPID_PUBLIC_KEY = "BIorsFql5jstcpgUYT3yr1LN1ZSRReqSbxVmLfw3D_j7dHdziYNhwwLuUSRVVlJNo1ul3IElxPcoDbCpXqAFHpI";
@@ -181,7 +181,7 @@ async function portfolio(userId: string, mitVerlauf: boolean) {
   await Promise.all(neu.map((p) => admin.from("buchungen").update({ symbol: p.symbol }).eq("user_id", userId)
     .eq("kennung", p.id).is("symbol", null)));
 
-  let verlauf: [string, number][] | undefined;
+  let verlauf: VerlaufTag[] | undefined;
   if (mitVerlauf) {
     const tagVon = (t: number) => new Date(t * 1000).toISOString().slice(0, 10);
     const mitKursen = [...bewertet, ...verkauft].filter((p) => !p.error).map((p) => ({
@@ -194,7 +194,8 @@ async function portfolio(userId: string, mitVerlauf: boolean) {
     buchungen: b.buchungen.map(({ id, art, datum, anteile, betrag }) => ({ id, art, datum, anteile, betrag })) }))
     .sort((a, b) => (b.verkauft_am ?? "").localeCompare(a.verkauft_am ?? ""));
   const realisiert = alle.reduce((s, b) => s + (b.realisiert ?? 0), 0);
-  return { positions: bewertet, geschlossen, realisiert: Math.round(realisiert * 100) / 100, verlauf, generated: Date.now() / 1000 };
+  return { positions: bewertet, geschlossen, realisiert: Math.round(realisiert * 100) / 100, verlauf,
+    ereignisse: mitVerlauf ? ereignisse(alle) : undefined, generated: Date.now() / 1000 };
 }
 
 // ---------------------------------------------------------------- Push
