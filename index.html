@@ -71,6 +71,15 @@ dialog::backdrop{background:rgba(0,0,0,.4)}
 dialog input{font:inherit;width:100%;padding:6px 8px;border:1px solid var(--line);border-radius:6px;
   background:var(--bg);color:var(--text)}
 dialog td{padding:4px;border:none}
+dialog select{font:inherit;width:100%;padding:6px 8px;border:1px solid var(--line);border-radius:6px;background:var(--bg);color:var(--text)}
+#etbl.buchungen input[type=date]{min-width:130px}
+#etbl.buchungen select{min-width:96px}
+.kbuch{margin-top:14px;border-top:1px solid var(--line);padding-top:10px}
+.kbuch-kopf{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap}
+.kbuch-kopf h3{font-size:14px;margin:0}
+.kbuch .e{display:flex;justify-content:space-between;gap:8px;padding:5px 0;border-bottom:1px solid var(--line);font-size:13px}
+#geschl .e{display:flex;justify-content:space-between;gap:8px;padding:8px 0;border-bottom:1px solid var(--line);font-size:14px}
+#geschl .s{color:var(--muted);font-size:12px}
 dialog .hint{color:var(--muted);font-size:12px;margin:8px 0 14px}
 .row-actions{display:flex;gap:8px;justify-content:space-between;margin-top:14px;flex-wrap:wrap}
 .foot{color:var(--muted);font-size:12px;margin-top:16px}
@@ -128,6 +137,11 @@ dialog .hint{color:var(--muted);font-size:12px;margin:8px 0 14px}
   #etbl input{width:100% !important;font-size:16px} /* 16px verhindert Auto-Zoom auf dem Handy */
   #etbl td::before{content:attr(data-label);display:block;color:var(--muted);font-size:11px;margin-bottom:2px}
   #etbl td:last-child{top:28px}
+  #etbl.buchungen td:nth-child(1),#etbl.buchungen td:nth-child(2){grid-column:auto}
+  #etbl.buchungen td:nth-child(3),#etbl.buchungen td:nth-child(4){grid-column:1 / -1}
+  #etbl.buchungen td:nth-child(1){padding-right:0}
+  #etbl.buchungen td:last-child{top:auto;bottom:10px}
+  #etbl select{font-size:16px}
   .row-actions{position:sticky;bottom:calc(-1 * max(16px,env(safe-area-inset-bottom)));background:var(--card);
     padding:10px 0 max(10px,env(safe-area-inset-bottom));margin-bottom:calc(-1 * max(16px,env(safe-area-inset-bottom)));border-top:1px solid var(--line)}
   .aform select,.aform input{font-size:16px;max-width:100%}
@@ -278,7 +292,7 @@ body.supabase .nur-lokal{display:none !important}
 
   <section class="grid">
     <div class="card">
-      <h2>Wertentwicklung <span class="meta">(mit heutigen Anteilen zurückgerechnet)</span></h2>
+      <h2>Wertentwicklung <span class="meta" id="line-info">(mit heutigen Anteilen zurückgerechnet)</span></h2>
       <div class="tabs" id="ranges"></div>
       <div class="chartbox"><canvas id="line"></canvas></div>
     </div>
@@ -292,6 +306,11 @@ body.supabase .nur-lokal{display:none !important}
     <h2>Positionen</h2>
     <label class="msort meta">Sortieren nach <select id="msort"></select></label>
     <div class="tablewrap"><table id="tbl"><thead></thead><tbody></tbody></table></div>
+  </section>
+
+  <section class="card" id="geschl-karte" style="margin-top:16px" hidden>
+    <h2>Verkaufte Positionen <span class="meta" id="geschl-summe"></span></h2>
+    <div id="geschl"></div>
   </section>
 
   <section class="card" style="margin-top:16px">
@@ -505,6 +524,13 @@ body.supabase .nur-lokal{display:none !important}
   <div class="tabs" id="k-ranges"></div>
   <div class="chartbox"><canvas id="k-chart"></canvas></div>
   <div class="kstats" id="k-stats"></div>
+  <div class="kbuch nur-supabase" id="k-buch">
+    <div class="kbuch-kopf">
+      <h3>Käufe und Verkäufe</h3>
+      <div style="display:flex;gap:6px"><button id="k-kauf">+ Zukauf</button><button id="k-verkauf">− Verkauf</button></div>
+    </div>
+    <div id="k-buchliste"></div>
+  </div>
   <div class="krech">
     <div class="krech-kopf">
       <h3>Nachrichten</h3>
@@ -520,6 +546,7 @@ body.supabase .nur-lokal{display:none !important}
   <div class="hint">Kennung: ISIN (z.&nbsp;B. IE00BK5BQT80) oder Yahoo-Ticker (z.&nbsp;B. SAP.DE). Einstand = gesamter Kaufpreis in € (optional, für Gewinn/Verlust).</div>
   <div class="tablewrap">
     <table id="etbl"><thead><tr><th class="l">Name</th><th class="l">ISIN / Ticker</th><th class="l">Depot</th><th class="l">Anteile</th><th class="l">Einstand €</th><th></th></tr></thead><tbody></tbody></table>
+    <datalist id="e-werte"></datalist><datalist id="e-depots"></datalist>
   </div>
   <div class="row-actions">
     <button id="addrow">+ Position</button>
@@ -537,6 +564,7 @@ const qty = v => new Intl.NumberFormat('de-DE',{maximumFractionDigits:6}).format
 const priceFmt = v => new Intl.NumberFormat('de-DE',{style:'currency',currency:'EUR',
   minimumFractionDigits:2,maximumFractionDigits: v<1?4:2}).format(v);
 const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+const datumDe = d => new Date(d+'T12:00:00').toLocaleDateString('de-DE');
 const PALETTE = ['#2563eb','#16a34a','#f59e0b','#db2777','#7c3aed','#0891b2','#dc2626','#65a30d','#ea580c','#4f46e5','#0d9488','#a16207'];
 
 let data = null, lineChart = null, donutChart = null;
@@ -617,7 +645,20 @@ function render(){
   document.getElementById('k-depotlist').innerHTML = Object.entries(depots).sort((a,b)=>b[1]-a[1])
     .map(([d,v])=>`<div style="display:flex;justify-content:space-between;gap:8px;white-space:nowrap"><span>${esc(d)} <span class="meta">${total?num(v/total*100,0):0} %</span></span><b>${eur.format(v)}</b></div>`).join('');
 
-  renderTable(P,total); renderDonut(ok,total); renderLine(ok);
+  if(data.realisiert) document.getElementById('k-plpct').textContent += ` · aus Verkäufen ${signed(data.realisiert)}`;
+
+  renderTable(P,total); renderGeschlossen(); renderDonut(ok,total); renderLine(ok);
+}
+
+// Vollständig verkaufte Positionen mit realisiertem Gewinn/Verlust (nur Online-Fassung mit Buchungen)
+function renderGeschlossen(){
+  const g=data.geschlossen||[], karte=document.getElementById('geschl-karte');
+  karte.hidden=!g.length; if(!g.length) return;
+  const summe=g.reduce((s,x)=>s+(x.realisiert??0),0);
+  const sm=document.getElementById('geschl-summe'); sm.textContent=`· realisiert ${signed(summe)}`; sm.className='meta '+cls(summe);
+  document.getElementById('geschl').innerHTML=g.map(x=>`<div class="e">
+      <div><b>${esc(x.name||x.id)}</b><div class="s">${esc(x.id)} · ${esc(x.depot||'–')} · ${x.verkauft_am?'zuletzt verkauft am '+datumDe(x.verkauft_am):'ohne Datum'}${x.warnung?' · <span class="err">'+esc(x.warnung)+'</span>':''}</div></div>
+      <div class="${x.realisiert!=null?cls(x.realisiert):''}">${x.realisiert!=null?signed(x.realisiert):'–'}</div></div>`).join('');
 }
 
 function esc(s){return String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]))}
@@ -634,14 +675,14 @@ function renderTable(P,total){
   const ms=document.getElementById('msort');
   ms.innerHTML=COLS.map(([k,l])=>`<option value="${k}" ${k===sortKey?'selected':''}>${l}</option>`).join('');
   ms.onchange=()=>{sortKey=ms.value; sortDir=(sortKey==='name'||sortKey==='depot')?1:-1; localSet('sort',sortKey); renderTable(P,total);};
-  if(!P.length){ t.tBodies[0].innerHTML=`<tr><td colspan="8" class="empty">Noch keine Positionen. Klicke auf „Positionen bearbeiten“.</td></tr>`; return; }
+  if(!P.length){ t.tBodies[0].innerHTML=`<tr><td colspan="8" class="empty">Noch keine Positionen. Klicke oben auf „${BUCHUNGEN?'Käufe &amp; Verkäufe':'Positionen bearbeiten'}“.</td></tr>`; return; }
   const rows = P.map((p,i)=>({...p, _i:i, weight: total? p.value/total*100 : 0}));
   rows.sort((a,b)=>{const x=a[sortKey]??-Infinity, y=b[sortKey]??-Infinity; return (typeof x==='string'? x.localeCompare(y) : x-y)*sortDir;});
   t.tBodies[0].innerHTML = rows.map(p=>{
     // data-label = Beschriftung in der Handy-Ansicht (Karten statt Tabelle)
     if(p.error) return `<tr><td class="name"><div class="n">${esc(p.name||p.id)}</div><div class="err">${esc(p.error)}</div></td><td class="l" data-label="Depot"><span>${esc(p.depot)}</span></td><td data-label="Anteile"><span>${qty(p.anteile)}</span></td><td colspan="5" class="only-d"></td></tr>`;
     return `<tr class="klick" data-i="${p._i}" title="Kursverlauf anzeigen">
-      <td class="name"><div class="n">${esc(p.name||p.symbol)} <span class="pfeil">›</span></div><div class="s">${esc(p.id)}${p.symbol&&p.symbol!==p.id?' · '+esc(p.symbol):''}${p.currency_src&&p.currency_src!=='EUR'?' · '+esc(p.currency_src):''}</div></td>
+      <td class="name"><div class="n">${esc(p.name||p.symbol)} <span class="pfeil">›</span></div><div class="s">${esc(p.id)}${p.symbol&&p.symbol!==p.id?' · '+esc(p.symbol):''}${p.currency_src&&p.currency_src!=='EUR'?' · '+esc(p.currency_src):''}${p.warnung?' · <span class="err">'+esc(p.warnung)+'</span>':''}</div></td>
       <td class="l" data-label="Depot"><span class="chip">${esc(p.depot||'–')}</span></td>
       <td data-label="Anteile"><span>${qty(p.anteile)}</span></td>
       <td data-label="Kurs"><span>${priceFmt(p.price)}</span></td>
@@ -670,17 +711,24 @@ function renderLine(ok){
   const rb=document.getElementById('ranges');
   rb.innerHTML=Object.keys(RANGES).map(r=>`<button class="${r===range?'on':''}" data-r="${r}">${r}</button>`).join('');
   rb.querySelectorAll('button').forEach(b=>b.onclick=()=>{range=b.dataset.r; localSet('range',range); renderLine(ok);});
+  const cutoff=new Date(Date.now()-RANGES[range]*864e5).toISOString().slice(0,10);
+  let series=[];
+  if(data.verlauf){
+    // online: Bestand des jeweiligen Tages aus den Buchungen (verkaufte Werte bis zum Verkauf, Zukäufe ab Kaufdatum)
+    series=data.verlauf.filter(([d])=>d>=cutoff);
+    document.getElementById('line-info').textContent='(Bestand des jeweiligen Tages – Käufe und Verkäufe verändern den Wert)';
+  } else {
   // Tageswerte je Position auf gemeinsame Kalendertage legen, Lücken vorwärts füllen
   const dayKey=t=>new Date(t*1000).toISOString().slice(0,10);
   const maps=ok.map(p=>{const m=new Map(); p.history.forEach(([t,c])=>m.set(dayKey(t),c)); return {p,m};});
   const days=[...new Set(maps.flatMap(x=>[...x.m.keys()]))].sort();
-  const cutoff=new Date(Date.now()-RANGES[range]*864e5).toISOString().slice(0,10);
   // Vor dem ersten Kurs (z. B. Börsengang) mit dem ersten bekannten Kurs auffüllen
-  const last=maps.map(x=>x.m.size? x.m.get([...x.m.keys()].sort()[0]) : 0), series=[];
+  const last=maps.map(x=>x.m.size? x.m.get([...x.m.keys()].sort()[0]) : 0);
   for(const d of days){
     maps.forEach((x,i)=>{if(x.m.has(d)) last[i]=x.m.get(d);});
     if(d<cutoff) continue;
     series.push([d, maps.reduce((s,x,i)=>s+last[i]*(x.p.anteile||0),0)]);
+  }
   }
   const up = series.length>1 && series.at(-1)[1]>=series[0][1];
   const color = up?css('--pos'):css('--neg');
@@ -754,6 +802,10 @@ function renderVerlauf(){
   }
   if(!werte.length) st.unshift(box('Kursverlauf','keine Daten'));
   document.getElementById('k-stats').innerHTML=st.join('');
+  const kb=document.getElementById('k-buch'); kb.hidden=!(BUCHUNGEN && p.buchungen);
+  if(!kb.hidden) document.getElementById('k-buchliste').innerHTML=[...p.buchungen].reverse().map(b=>`<div class="e">
+      <span>${b.datum?datumDe(b.datum):'Anfangsbestand'} · ${b.art==='kauf'?'Kauf':'<span class="neg">Verkauf</span>'} ${qty(b.anteile)}</span>
+      <span>${b.betrag!=null?eur.format(b.betrag)+` <span class="meta">(${priceFmt(b.betrag/b.anteile)} je Anteil)</span>`:'<span class="meta">Betrag unbekannt</span>'}</span></div>`).join('');
   rechercheZeigen(p);
 }
 
@@ -790,6 +842,16 @@ document.getElementById('k-claude').onclick=async()=>{
 
 // ---- Bearbeiten ----
 const dlg=document.getElementById('dlg'); let original=[];
+const BUCHUNGEN = typeof API.buchungen === 'function';   // online: Buchungen (Kauf/Verkauf mit Datum) statt fester Positionen
+const heute = () => new Date().toLocaleDateString('sv-SE'); // JJJJ-MM-TT in Ortszeit
+// Zahl in deutscher oder englischer Schreibweise („1.234,56“ oder „1234.56“); leer = null, ungültig = NaN
+const zahlAus = v => { let t=String(v??'').trim().replace(/\s|€/g,''); if(!t) return null; if(t.includes(',')) t=t.replace(/\./g,'').replace(',','.'); const n=Number(t); return Number.isFinite(n)?n:NaN; };
+const deZahl = v => v==null ? '' : String(v).replace('.',',');
+if(BUCHUNGEN){
+  document.querySelector('#edit .only-d').textContent='Käufe & Verkäufe';
+  document.querySelector('#edit .only-m').textContent='Buchungen';
+}
+
 function erow(h={}){
   const tr=document.createElement('tr');
   tr.dataset.symbol=h.symbol||''; tr.dataset.origId=h.id||''; tr.dataset.uid=h.uid||'';
@@ -802,24 +864,105 @@ function erow(h={}){
   tr.querySelector('button').onclick=()=>tr.remove();
   return tr;
 }
-document.getElementById('edit').onclick=async()=>{
-  try{ original=await API.holdings(); }catch(e){ return alert('Positionen konnten nicht geladen werden: '+e.message); }
+// Eine Buchung (Kauf oder Verkauf) als Tabellenzeile
+function brow(b={}){
+  const tr=document.createElement('tr');
+  tr.dataset.id=b.id||''; tr.dataset.symbol=b.symbol||''; tr.dataset.origKennung=b.kennung||'';
+  tr.innerHTML=`<td data-label="Datum"><input type="date" data-f="datum" value="${esc(b.datum||'')}" max="${heute()}" title="Leer lassen = Anfangsbestand ohne Datum"></td>
+    <td data-label="Art"><select data-f="art"><option value="kauf">Kauf</option><option value="verkauf" ${b.art==='verkauf'?'selected':''}>Verkauf</option></select></td>
+    <td data-label="Name"><input data-f="name" value="${esc(b.name)}" placeholder="z. B. Vanguard All-World"></td>
+    <td data-label="ISIN / Ticker"><input data-f="kennung" value="${esc(b.kennung)}" list="e-werte" placeholder="ISIN oder Ticker" autocomplete="off"></td>
+    <td data-label="Depot"><input data-f="depot" value="${esc(b.depot)}" list="e-depots" placeholder="Trade Republic / ING"></td>
+    <td data-label="Anteile"><input data-f="anteile" value="${esc(deZahl(b.anteile))}" inputmode="decimal" placeholder="Anteile" style="width:90px"></td>
+    <td data-label="Betrag € gesamt"><input data-f="betrag" value="${esc(deZahl(b.betrag))}" inputmode="decimal" placeholder="inkl. Gebühren" style="width:110px"></td>
+    <td><button title="Buchung löschen">✕</button></td>`;
+  tr.querySelector('button').onclick=()=>tr.remove();
+  // Bekannter Wert: Name und Depot übernehmen
+  const f=n=>tr.querySelector(`[data-f="${n}"]`);
+  f('kennung').addEventListener('change',()=>{
+    const k=f('kennung').value.trim().toUpperCase(), t=original.find(o=>o.kennung.trim().toUpperCase()===k);
+    if(t){ if(!f('name').value) f('name').value=t.name; if(!f('depot').value) f('depot').value=t.depot; }
+  });
+  return tr;
+}
+
+function dialogKopf(){
+  document.getElementById('etbl').classList.toggle('buchungen',BUCHUNGEN);
+  dlg.querySelector('h2').textContent = BUCHUNGEN ? 'Käufe und Verkäufe' : 'Positionen bearbeiten';
+  dlg.querySelector('.hint').innerHTML = BUCHUNGEN
+    ? 'Jede Zeile ist ein Kauf oder Verkauf. Gleicher Wert im selben Depot wird automatisch zu einer Position zusammengefasst. '
+      + '<b>Betrag</b> = gesamter Preis in € inkl. Gebühren (beim Verkauf: was du erhalten hast). Ohne Datum = Anfangsbestand. '
+      + 'Verkaufte Werte bitte nicht löschen, sondern einen Verkauf eintragen – dann bleiben sie im Verlauf und der Gewinn wird berechnet.'
+    : 'Kennung: ISIN (z.&nbsp;B. IE00BK5BQT80) oder Yahoo-Ticker (z.&nbsp;B. SAP.DE). Einstand = gesamter Kaufpreis in € (optional, für Gewinn/Verlust).';
+  document.querySelector('#etbl thead').innerHTML = BUCHUNGEN
+    ? '<tr><th class="l">Datum</th><th class="l">Art</th><th class="l">Name</th><th class="l">ISIN / Ticker</th><th class="l">Depot</th><th class="l">Anteile</th><th class="l">Betrag €</th><th></th></tr>'
+    : '<tr><th class="l">Name</th><th class="l">ISIN / Ticker</th><th class="l">Depot</th><th class="l">Anteile</th><th class="l">Einstand €</th><th></th></tr>';
+  document.getElementById('addrow').textContent = BUCHUNGEN ? '+ Buchung' : '+ Position';
+}
+
+/** Dialog öffnen; `neu` = vorbelegte neue Buchung (z. B. Zukauf aus dem Kursverlauf) */
+async function bearbeiten(neu){
+  try{ original = BUCHUNGEN ? await API.buchungen() : await API.holdings(); }
+  catch(e){ return alert('Laden fehlgeschlagen: '+e.message); }
+  dialogKopf();
   const tb=document.querySelector('#etbl tbody'); tb.innerHTML='';
-  (original.length?original:[{}]).forEach(h=>tb.appendChild(erow(h)));
+  if(BUCHUNGEN){
+    document.getElementById('e-werte').innerHTML=[...new Map(original.map(o=>[o.kennung,o.name]))]
+      .map(([k,n])=>`<option value="${esc(k)}">${esc(n)}</option>`).join('');
+    document.getElementById('e-depots').innerHTML=[...new Set(original.map(o=>o.depot).filter(Boolean))].map(d=>`<option value="${esc(d)}">`).join('');
+    if(neu) tb.appendChild(brow(neu));
+    original.forEach(b=>tb.appendChild(brow(b)));
+    if(!tb.children.length) tb.appendChild(brow({datum:heute()}));
+  } else (original.length?original:[{}]).forEach(h=>tb.appendChild(erow(h)));
   dlg.showModal();
+  if(neu) tb.querySelector('[data-f="anteile"]').focus();
+}
+document.getElementById('edit').onclick=()=>bearbeiten();
+document.getElementById('addrow').onclick=()=>{
+  const tb=document.querySelector('#etbl tbody');
+  if(!BUCHUNGEN) return tb.appendChild(erow());
+  const r=brow({datum:heute()}); tb.prepend(r); r.querySelector('[data-f="name"]').focus();
 };
-document.getElementById('addrow').onclick=()=>document.querySelector('#etbl tbody').appendChild(erow());
 document.getElementById('cancel').onclick=()=>dlg.close();
 document.getElementById('save').onclick=async()=>{
-  const items=[...document.querySelectorAll('#etbl tbody tr')].map(tr=>{
-    const o={}; tr.querySelectorAll('input').forEach(i=>o[i.dataset.f]=i.value.trim());
-    if(tr.dataset.symbol && tr.dataset.origId===o.id) o.symbol=tr.dataset.symbol; // Symbol nur behalten, wenn Kennung gleich
-    if(tr.dataset.uid) o.uid=tr.dataset.uid;
-    return o;
-  }).filter(o=>o.id);
-  try{ await API.saveHoldings(items); }catch(e){ return alert('Speichern fehlgeschlagen: '+e.message); }
+  const zeilen=[...document.querySelectorAll('#etbl tbody tr')];
+  try{
+    if(BUCHUNGEN){
+      const items=[];
+      for(const tr of zeilen){
+        const o={}; tr.querySelectorAll('input,select').forEach(i=>o[i.dataset.f]=i.value.trim());
+        if(!o.kennung && !o.anteile && !o.name) continue;                    // leere Zeile
+        const z=`Zeile „${o.name||o.kennung||'ohne Namen'}“`;
+        if(!o.kennung) throw new Error(`${z}: bitte ISIN oder Ticker angeben.`);
+        o.anteile=zahlAus(o.anteile); o.betrag=zahlAus(o.betrag);
+        if(!(o.anteile>0)) throw new Error(`${z}: bitte die Anzahl Anteile angeben (größer als 0).`);
+        if(Number.isNaN(o.betrag) || o.betrag<0) throw new Error(`${z}: der Betrag ist keine gültige Zahl.`);
+        if(o.datum && o.datum>heute()) throw new Error(`${z}: das Datum liegt in der Zukunft.`);
+        if(tr.dataset.id) o.id=tr.dataset.id;
+        if(tr.dataset.symbol && tr.dataset.origKennung===o.kennung) o.symbol=tr.dataset.symbol;  // Symbol nur bei gleicher Kennung behalten
+        items.push(o);
+      }
+      await API.saveBuchungen(items);
+    } else {
+      const items=zeilen.map(tr=>{
+        const o={}; tr.querySelectorAll('input').forEach(i=>o[i.dataset.f]=i.value.trim());
+        if(tr.dataset.symbol && tr.dataset.origId===o.id) o.symbol=tr.dataset.symbol; // Symbol nur behalten, wenn Kennung gleich
+        if(tr.dataset.uid) o.uid=tr.dataset.uid;
+        return o;
+      }).filter(o=>o.id);
+      await API.saveHoldings(items);
+    }
+  }catch(e){ return alert('Speichern fehlgeschlagen: '+e.message); }
   dlg.close(); load();
 };
+// Zukauf / Verkauf direkt aus dem Kursverlauf einer Position
+function buchungAus(art){
+  const p=data?.positions?.[kIndex]; if(!p) return;
+  kdlg.close();
+  bearbeiten({datum:heute(), art, kennung:p.id, name:p.name, depot:p.depot, symbol:p.symbol});
+}
+document.getElementById('k-kauf').onclick=()=>buchungAus('kauf');
+document.getElementById('k-verkauf').onclick=()=>buchungAus('verkauf');
 
 // ---- Alerts ----
 let rules=[];

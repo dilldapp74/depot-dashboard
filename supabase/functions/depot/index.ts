@@ -1,7 +1,7 @@
 // Supabase Edge Function "depot" – Kurse, Alerts und Push-Mitteilungen.
 //
 // Aufrufe (immer POST, JSON):
-//   { aktion: "portfolio" }  aus der App (mit Anmelde-Token) → Positionen mit Kursen, Verlauf, G/V
+//   { aktion: "portfolio" }  aus der App (mit Anmelde-Token) → Positionen aus den Buchungen mit Kursen, Verlauf, G/V
 //   { aktion: "pruefen" }    aus der App → Alerts sofort prüfen, gibt ausgelöste zurück
 //   { aktion: "test" }       aus der App → Test-Mitteilung an alle eigenen Geräte
 //   { aktion: "cron" }       per Cron (Kopfzeile x-cron-secret) → Alerts aller Konten prüfen
@@ -34,6 +34,7 @@ import {
   type Wert, wochenstart,
 } from "./handel.ts";
 import { UNIVERSUM } from "./universum.ts";
+import { type Buchung, bestaende, depotverlauf } from "./bestand.ts";
 
 // Öffentlicher Schlüssel – derselbe wie VAPID_PUBLIC_KEY in config.js
 const VAPID_PUBLIC_KEY = "BIorsFql5jstcpgUYT3yr1LN1ZSRReqSbxVmLfw3D_j7dHdziYNhwwLuUSRVVlJNo1ul3IElxPcoDbCpXqAFHpI";
@@ -153,19 +154,47 @@ async function bewerten(p: Position, mitVerlauf: boolean): Promise<Position> {
   return out;
 }
 
+/**
+ * Echtes Depot aus den Buchungen: offene Positionen mit Kursen (gleicher Wert im selben Depot zusammengefasst),
+ * vollständig verkaufte Positionen mit realisiertem Gewinn/Verlust und – mit Verlauf – der Depotwert je Tag
+ * mit dem Bestand, der an dem Tag wirklich im Depot lag.
+ */
 async function portfolio(userId: string, mitVerlauf: boolean) {
-  const { data, error } = await admin.from("positionen")
-    .select("id, name, kennung, depot, anteile, einstand, symbol").eq("user_id", userId).order("geaendert");
+  const { data, error } = await admin.from("buchungen")
+    .select("id, kennung, name, depot, symbol, art, datum, anteile, betrag").eq("user_id", userId);
   if (error) throw error;
-  const positionen: Position[] = (data ?? []).map((r) => ({
-    uid: r.id, name: r.name, id: r.kennung, depot: r.depot, anteile: Number(r.anteile),
-    einstand: r.einstand == null ? null : Number(r.einstand), symbol: r.symbol,
-  }));
-  const bewertet = await Promise.all(positionen.map((p) => bewerten(p, mitVerlauf)));
-  // aufgelöste Symbole merken, damit die ISIN-Suche nur einmal läuft
-  await Promise.all(bewertet.filter((b, i) => b.symbol && !positionen[i].symbol && !b.error)
-    .map((b) => admin.from("positionen").update({ symbol: b.symbol }).eq("id", b.uid)));
-  return { positions: bewertet, generated: Date.now() / 1000 };
+  const alle = bestaende((data ?? []).map((r) => ({ ...r, anteile: Number(r.anteile),
+    betrag: r.betrag == null ? null : Number(r.betrag) }) as Buchung));
+  const vorEinemJahr = berlin(new Date(Date.now() - 366 * 864e5)).tag;
+  const offen = alle.filter((b) => b.anteile > 0);
+  // verkaufte Positionen braucht der Depotverlauf nur, solange der Verkauf im angezeigten Jahr liegt
+  const fuerVerlauf = mitVerlauf ? alle.filter((b) => b.anteile === 0 && (b.letzte_buchung ?? "") >= vorEinemJahr) : [];
+  const alsPosition = (b: typeof alle[number]): Position => ({ uid: b.schluessel, name: b.name, id: b.kennung, depot: b.depot,
+    anteile: b.anteile, einstand: b.einstand, symbol: b.symbol, realisiert: b.realisiert, warnung: b.warnung,
+    buchungen: b.buchungen.map(({ id, art, datum, anteile, betrag }) => ({ id, art, datum, anteile, betrag })) });
+  const [bewertet, verkauft] = await Promise.all([
+    Promise.all(offen.map((b) => bewerten(alsPosition(b), mitVerlauf))),
+    Promise.all(fuerVerlauf.map((b) => bewerten(alsPosition(b), true))),
+  ]);
+  // aufgelöste Symbole an den Buchungen merken, damit die ISIN-Suche nur einmal läuft
+  const neu = [...bewertet, ...verkauft].filter((p) => p.symbol && !p.error && !alle.find((b) => b.schluessel === p.uid)?.symbol);
+  await Promise.all(neu.map((p) => admin.from("buchungen").update({ symbol: p.symbol }).eq("user_id", userId)
+    .eq("kennung", p.id).is("symbol", null)));
+
+  let verlauf: [string, number][] | undefined;
+  if (mitVerlauf) {
+    const tagVon = (t: number) => new Date(t * 1000).toISOString().slice(0, 10);
+    const mitKursen = [...bewertet, ...verkauft].filter((p) => !p.error).map((p) => ({
+      bestand: alle.find((b) => b.schluessel === p.uid)!,
+      kurse: new Map((p.history as [number, number][]).map(([t, c]) => [tagVon(t), c])) }));
+    verlauf = depotverlauf(mitKursen);
+  }
+  const geschlossen = alle.filter((b) => b.anteile === 0).map((b) => ({ name: b.name, id: b.kennung, depot: b.depot,
+    realisiert: b.realisiert, verkauft_am: b.letzte_buchung, warnung: b.warnung,
+    buchungen: b.buchungen.map(({ id, art, datum, anteile, betrag }) => ({ id, art, datum, anteile, betrag })) }))
+    .sort((a, b) => (b.verkauft_am ?? "").localeCompare(a.verkauft_am ?? ""));
+  const realisiert = alle.reduce((s, b) => s + (b.realisiert ?? 0), 0);
+  return { positions: bewertet, geschlossen, realisiert: Math.round(realisiert * 100) / 100, verlauf, generated: Date.now() / 1000 };
 }
 
 // ---------------------------------------------------------------- Push

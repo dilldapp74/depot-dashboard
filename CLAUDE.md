@@ -31,6 +31,17 @@ und Alerts. Später: als App auf Mac und Android (PWA), Server im Dauerbetrieb, 
   Zahnrad ⚙ in der Kopfzeile; auf der Seite stehen nur die ausgelösten Alerts. IDs (`a-rules`, `a-form`, …) unverändert.
 - Letzter Stand liegt zusätzlich in `localStorage` (`dd.letzterStand`) für den Offline-Start; Abmelden löscht ihn.
 
+## Echtes Depot: Buchungen (nur online, supabase/buchungen.sql, bestand.ts)
+- Online speichert die App **Buchungen** (Kauf/Verkauf mit Datum, Anteilen, Betrag € inkl. Gebühren) in `buchungen`, keine
+  festen Positionen mehr. Die alte Tabelle `positionen` bleibt als Sicherung stehen (beim Einspielen als Anfangsbestand übernommen).
+- `supabase/functions/depot/bestand.ts` (reine Logik, Tests in `tests/bestand.test.ts`): gleicher Wert im selben Depot wird
+  zusammengefasst (Schlüssel Kennung + Depot), Einstand = Durchschnittskosten, Verkauf → realisierter G/V, ohne Datum =
+  Anfangsbestand, `depotverlauf()` mit dem Bestand des jeweiligen Tages.
+- `portfolio` liefert zusätzlich `geschlossen` (komplett verkaufte Werte), `realisiert` und `verlauf`; verkaufte Werte bleiben im
+  Verlauf, solange der Verkauf im angezeigten Jahr liegt. Alerts und Recherche sehen nur offene Positionen.
+- App: Knopf „Käufe & Verkäufe“ öffnet den Buchungen-Dialog (`brow()`); im Kursverlauf-Dialog „+ Zukauf“ / „− Verkauf“.
+  Lokale Fassung (`server.py`, `holdings.json`) bleibt bei festen Positionen (`erow()`), gesteuert über `BUCHUNGEN`.
+
 ## Supabase
 - `supabase/schema.sql` (wiederholbar): Tabellen `positionen`, `alert_regeln`, `alert_zustand`,
   `alert_protokoll`, `push_abos`; RLS „nur eigene Zeilen“, `anon` ohne Rechte, `alert_zustand` nur für die Function.

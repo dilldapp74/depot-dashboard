@@ -71,6 +71,19 @@ function supabaseModus() {
       return data.map(r => ({ uid: r.id, name: r.name, id: r.kennung, depot: r.depot,
         anteile: Number(r.anteile), einstand: r.einstand == null ? null : Number(r.einstand), symbol: r.symbol }));
     },
+    // Echtes Depot als Buchungen (Kauf/Verkauf mit Datum); den Bestand rechnet die Edge Function daraus
+    async buchungen() {
+      const { data, error } = await sb.from('buchungen')
+        .select('id, kennung, name, depot, symbol, art, datum, anteile, betrag').order('datum', { ascending: false, nullsFirst: false });
+      if (error) throw new Error(error.message);
+      return data.map(r => ({ ...r, anteile: Number(r.anteile), betrag: r.betrag == null ? null : Number(r.betrag) }));
+    },
+    async saveBuchungen(items) {
+      const { data: alt, error } = await sb.from('buchungen').select('id');
+      if (error) throw new Error(error.message);
+      await ersetzen('buchungen', alt, items, n => ({ kennung: n.kennung, name: n.name || '', depot: n.depot || '',
+        symbol: n.symbol || null, art: n.art, datum: n.datum || null, anteile: n.anteile, betrag: n.betrag }));
+    },
     async saveHoldings(items) {
       const { data: alt, error } = await sb.from('positionen').select('id');
       if (error) throw new Error(error.message);
