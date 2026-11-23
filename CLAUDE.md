@@ -39,6 +39,9 @@ und Alerts. Später: als App auf Mac und Android (PWA), Server im Dauerbetrieb, 
   Anfangsbestand, `depotverlauf()` mit dem Bestand des jeweiligen Tages.
 - `portfolio` liefert zusätzlich `geschlossen` (komplett verkaufte Werte), `realisiert` und `verlauf`; verkaufte Werte bleiben im
   Verlauf, solange der Verkauf im angezeigten Jahr liegt. Alerts und Recherche sehen nur offene Positionen.
+- Wertentwicklung: `verlauf`-Zeilen = [Tag, Wert, davon später verkauft, Käufe − Verkäufe zum Tageskurs]; `ereignisse` = Käufe/Verkäufe
+  je Tag. `linieMitBuchungen()` zeigt gestapelte Flächen (heute noch im Depot / inzwischen verkauft, Y-Achse ab 0), gestrichelte
+  Markierungen (Plugin `markierungen`) und trennt im Titel Kursentwicklung von Käufen/Verkäufen. Buchungen am Wochenende → nächster Kurstag.
 - App: Knopf „Käufe & Verkäufe“ öffnet den Buchungen-Dialog (`brow()`); im Kursverlauf-Dialog „+ Zukauf“ / „− Verkauf“.
   Lokale Fassung (`server.py`, `holdings.json`) bleibt bei festen Positionen (`erow()`), gesteuert über `BUCHUNGEN`.
 

@@ -2,7 +2,7 @@
 // Ausführen: node --test "tests/*.test.ts"
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { anteileAm, type Buchung, bestaende, depotverlauf } from "../supabase/functions/depot/bestand.ts";
+import { anteileAm, type Buchung, bestaende, depotverlauf, ereignisse, spaeterVerkauftAm } from "../supabase/functions/depot/bestand.ts";
 
 const kauf = (datum: string | null, anteile: number, betrag: number | null, extra: Partial<Buchung> = {}): Buchung =>
   ({ kennung: "IE00BK5BQT80", name: "Vanguard All-World", depot: "ING", art: "kauf", datum, anteile, betrag, ...extra });
@@ -70,5 +70,25 @@ test("Depotverlauf: verkaufte Position zählt bis zum Verkauf, gekaufte erst ab 
   const [neu] = bestaende([kauf("2026-11-03", 2, 1000, { kennung: "NEU" })]);
   const kurse = (w: number) => new Map([["2026-11-02", w], ["2026-11-03", w], ["2026-11-04", w]]);
   const v = depotverlauf([{ bestand: alt, kurse: kurse(110) }, { bestand: neu, kurse: kurse(500) }]);
-  assert.deepEqual(v, [["2026-11-02", 1100], ["2026-11-03", 1000], ["2026-11-04", 1000]]);
+  // [Tag, Wert, davon später verkauft, Käufe − Verkäufe zum Tageskurs]
+  assert.deepEqual(v, [["2026-11-02", 1100, 1100, 0], ["2026-11-03", 1000, 0, -100], ["2026-11-04", 1000, 0, 0]]);
+});
+
+test("Teilverkauf: nur der später verkaufte Teil zählt als „verkauft“", () => {
+  const [b] = bestaende([kauf(null, 10, 1000), verkauf("2026-06-01", 4, 500)]);
+  assert.equal(spaeterVerkauftAm(b, "2026-05-31"), 4);
+  assert.equal(spaeterVerkauftAm(b, "2026-06-01"), 0);
+});
+
+test("Verkauf am Wochenende wird dem nächsten Kurstag zugeordnet", () => {
+  const [b] = bestaende([kauf(null, 10, 1000), verkauf("2026-11-07", 10, 1000)]);   // Samstag
+  const v = depotverlauf([{ bestand: b, kurse: new Map([["2026-11-06", 100], ["2026-11-09", 100]]) }]);
+  assert.deepEqual(v, [["2026-11-06", 1000, 1000, 0], ["2026-11-09", 0, 0, -1000]]);
+});
+
+test("Ereignisse: Käufe und Verkäufe je Tag zusammengefasst, ohne Anfangsbestand", () => {
+  const e = ereignisse(bestaende([kauf(null, 1, 1, { kennung: "A", name: "Alpha" }), verkauf("2026-11-20", 1, 1, { kennung: "A", name: "Alpha" }),
+    kauf(null, 1, 1, { kennung: "B", name: "Beta" }), verkauf("2026-11-20", 1, 1, { kennung: "B", name: "Beta" }),
+    kauf("2026-11-20", 2, 2, { kennung: "C", name: "Gamma" })]));
+  assert.deepEqual(e, [{ tag: "2026-11-20", art: "kauf", namen: ["Gamma"] }, { tag: "2026-11-20", art: "verkauf", namen: ["Alpha", "Beta"] }]);
 });

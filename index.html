@@ -715,8 +715,8 @@ function renderLine(ok){
   let series=[];
   if(data.verlauf){
     // online: Bestand des jeweiligen Tages aus den Buchungen (verkaufte Werte bis zum Verkauf, Zukäufe ab Kaufdatum)
-    series=data.verlauf.filter(([d])=>d>=cutoff);
-    document.getElementById('line-info').textContent='(Bestand des jeweiligen Tages – Käufe und Verkäufe verändern den Wert)';
+    document.getElementById('line-info').textContent='(Bestand des jeweiligen Tages)';
+    return linieMitBuchungen(data.verlauf.filter(([d])=>d>=cutoff));
   } else {
   // Tageswerte je Position auf gemeinsame Kalendertage legen, Lücken vorwärts füllen
   const dayKey=t=>new Date(t*1000).toISOString().slice(0,10);
@@ -741,6 +741,57 @@ function renderLine(ok){
   if(series.length>1){
     const ch=series.at(-1)[1]-series[0][1];
     cfg.options.plugins.title={display:true,align:'start',color,text:`${range}: ${signed(ch)} (${pct(ch/series[0][1]*100)})`};
+  }
+  if(lineChart) lineChart.destroy(); lineChart=new Chart(document.getElementById('line'),cfg);
+}
+
+// Senkrechte, gestrichelte Markierungen für Käufe und Verkäufe (eigenes kleines Chart.js-Plugin)
+const markierungen={id:'markierungen',afterDatasetsDraw(chart,_a,opts){
+  const {ctx,chartArea:{top,bottom,left,right},scales:{x}}=chart;
+  (opts.liste||[]).forEach((m,k)=>{
+    const px=x.getPixelForValue(m.i); if(px<left-1||px>right+1) return;
+    ctx.save(); ctx.strokeStyle=m.farbe; ctx.fillStyle=m.farbe; ctx.lineWidth=1.2; ctx.setLineDash([4,3]);
+    ctx.beginPath(); ctx.moveTo(px,top); ctx.lineTo(px,bottom); ctx.stroke(); ctx.setLineDash([]);
+    ctx.font='600 11px system-ui,-apple-system,sans-serif';
+    const rechts=px>right-150; ctx.textAlign=rechts?'right':'left';
+    ctx.fillText(m.text, px+(rechts?-5:5), top+12+(k%3)*14);
+    ctx.restore();
+  });
+}};
+
+// Online: Wertentwicklung mit Buchungen. Verlaufszeile = [Tag, Wert, davon später verkauft, Käufe − Verkäufe zum Tageskurs]
+function linieMitBuchungen(series){
+  const kurz=n=>n.length>22?n.slice(0,21)+'…':n;
+  const namenText=namen=>namen.slice(0,2).map(kurz).join(', ')+(namen.length>2?` +${namen.length-2}`:'');
+  const tage=series.map(s=>s[0]);
+  // Käufe/Verkäufe auf den ersten Kurstag ab dem Buchungsdatum legen (Wochenende → Montag)
+  const liste=(data.ereignisse||[]).map(e=>({e, i:tage.findIndex(t=>t>=e.tag)})).filter(x=>x.i>0)
+    .map(({e,i})=>({i, farbe:e.art==='kauf'?css('--pos'):css('--neg'), text:`${e.art==='kauf'?'▲ Kauf':'▼ Verkauf'} ${namenText(e.namen)}`, e}));
+  const gehalten=series.map(s=>s[1]-s[2]), verkauft=series.map(s=>s[2]);
+  const mitVerkauf=verkauft.some(v=>v>0.5);
+  const grau=css('--muted');
+  const datasets=[{label:'Heute noch im Depot',data:gehalten,borderColor:css('--accent'),backgroundColor:css('--accent')+'26',fill:'origin',pointRadius:0,borderWidth:2,tension:.15,stack:'w'}];
+  if(mitVerkauf) datasets.push({label:'Inzwischen verkauft',data:verkauft,borderColor:grau,backgroundColor:grau+'40',borderDash:[4,3],fill:'-1',pointRadius:0,borderWidth:1.2,tension:.15,stack:'w'});
+  const cfg={type:'line',plugins:[markierungen],
+    data:{labels:series.map(s=>new Date(s[0]).toLocaleDateString('de-DE',{day:'2-digit',month:'short'})),datasets},
+    options:{maintainAspectRatio:false,interaction:{mode:'index',intersect:false},
+      plugins:{markierungen:{liste},
+        legend:{display:mitVerkauf,labels:{color:css('--text'),boxWidth:12,font:{size:11}}},
+        tooltip:{callbacks:{
+          label:c=>`${c.dataset.label}: ${eur.format(c.raw)}`,
+          footer:items=>{ const i=items[0].dataIndex, z=series[i]; const zeilen=[`Depotwert: ${eur.format(z[1])}`];
+            liste.filter(m=>m.i===i).forEach(m=>zeilen.push(`${m.e.art==='kauf'?'Kauf':'Verkauf'}: ${m.e.namen.join(', ')}`)); return zeilen; }}}},
+      scales:{x:{ticks:{color:css('--muted'),maxTicksLimit:innerWidth<=640?4:7,maxRotation:0},grid:{display:false}},
+              // übereinanderliegende Flächen nur ab 0 ehrlich vergleichbar
+              y:{stacked:true,beginAtZero:mitVerkauf,ticks:{color:css('--muted'),callback:v=>eur.format(v).replace(/,\d\d/,'')},grid:{color:css('--line')}}}}};
+  if(series.length>1){
+    // Gesamtänderung = Kursentwicklung + Käufe/Verkäufe (zum Tageskurs bewertet)
+    const ch=series.at(-1)[1]-series[0][1], fluss=series.slice(1).reduce((s,z)=>s+z[3],0), kurs=ch-fluss;
+    const basis=series[0][1]||1;
+    cfg.options.plugins.title={display:true,align:'start',color:kurs>=0?css('--pos'):css('--neg'),
+      text:[`${range}: Kurse ${signed(kurs)} (${pct(kurs/basis*100)})`,
+        Math.abs(fluss)>0.5?`Depotwert ${signed(ch)} · davon Käufe/Verkäufe ${signed(fluss)}`:`Depotwert ${signed(ch)}`],
+      font:{size:12,weight:'600'}};
   }
   if(lineChart) lineChart.destroy(); lineChart=new Chart(document.getElementById('line'),cfg);
 }
